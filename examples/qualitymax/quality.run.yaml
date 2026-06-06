@@ -1,0 +1,26 @@
+# Predict QualityMax's recorded A-F composite quality grade for generated code.
+
+name: QualityMax - generated test quality grade
+
+targets:
+  - type: model
+    id: anthropic/claude-haiku-4-5
+  - type: model
+    id: openai/gpt-5-mini
+
+task:
+  system: >
+    Grade the generated automated test using QualityMax's A-F quality scale.
+    Consider structure, contract fidelity, framework quality, and likely
+    execution behavior. Reply with exactly one uppercase letter: A, B, C, D,
+    E, or F.
+  prompt_template: "{input}"
+
+check: exact
+
+cases:
+  source: file
+  path: ../../.context/qualitymax_quality_scores.jsonl
+  input_field: input
+  expect_field: expect
+  drop_unlabeled: true

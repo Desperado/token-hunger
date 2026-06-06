@@ -5,6 +5,7 @@ keys, so it is not exercised here; its shaping is covered by the runner tests.
 """
 
 from costbench import server
+from costbench.history import Observation, append_observations
 import pytest
 
 
@@ -33,6 +34,8 @@ def test_bootstrap_payload_has_task_cases_and_priced_models():
 
     assert b["meta"]["configFingerprint"].startswith("cfg:")
     assert b["meta"]["pricingFingerprint"].startswith("px:")
+    qualitymax = next(c for c in b["connectors"] if c["id"] == "qualitymax")
+    assert qualitymax["status"] in {"available", "installed"}
 
 
 def test_estimate_payload_is_real_and_orders_by_price():
@@ -67,6 +70,40 @@ def test_estimate_unknown_model_marked_unpriced():
     row = out["rows"][0]
     assert row["priced"] is False
     assert row["costHigh"] is None
+
+
+def test_estimate_uses_imported_dataset_fingerprint(monkeypatch, tmp_path):
+    history = tmp_path / "history.jsonl"
+    append_observations(
+        [
+            Observation(
+                config_fingerprint="0123456789ab",
+                target_id="anthropic/claude-haiku-4-5",
+                model_id="claude-haiku-4-5",
+                input_tokens=100 + i,
+                output_tokens=10 + i,
+                cost=0.001,
+                passed=False,
+                ts="2026-06-06T00:00:00Z",
+            )
+            for i in range(5)
+        ],
+        path=history,
+    )
+    monkeypatch.setenv("COSTBENCH_HISTORY", str(history))
+
+    out = server.estimate_payload({
+        "task": {
+            "system": "Predict completed or failed.",
+            "promptTemplate": "{input}",
+            "check": "exact",
+        },
+        "cases": [{"input": "crawl", "expect": "completed"}],
+        "targets": ["anthropic/claude-haiku-4-5"],
+        "configFingerprint": "0123456789ab",
+    })
+
+    assert out["rows"][0]["calibrated"] is True
 
 
 def test_stream_run_emits_start_progress_and_result(monkeypatch):
@@ -166,6 +203,21 @@ def test_request_validation_rejects_bad_shapes_and_limits():
                 "cases": [{"input": "q", "expect": "a"}] * 1000,
             },
         )
+    with pytest.raises(ValueError, match="configFingerprint"):
+        server.validate_request(
+            "/api/run",
+            {**valid, "configFingerprint": "../../history"},
+        )
+
+
+def test_build_cfg_accepts_trusted_dataset_fingerprint():
+    cfg = server._build_cfg(
+        {"system": "Answer.", "promptTemplate": "{input}", "check": "exact"},
+        ["anthropic/claude-haiku-4-5"],
+        [{"input": "q", "expect": "a"}],
+        config_fingerprint="0123456789ab",
+    )
+    assert cfg.fingerprint == "0123456789ab"
 
 
 def test_static_path_containment_guard_logic():

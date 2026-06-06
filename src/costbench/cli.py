@@ -5,6 +5,7 @@
     costbench suggest [task-type]     suggest models manually or via analysis
     costbench pull <pull.yaml>        pull cases from an external source to a dump
     costbench serve                   launch the local web UI (estimate + run)
+    costbench calibrate <config.yaml> import external token usage into history
     costbench init [path]             write a ready-to-run example config
     costbench models                  list models in the pricing table
 """
@@ -19,6 +20,7 @@ import sys
 from importlib import resources
 from pathlib import Path
 
+import yaml
 from rich.console import Console
 from rich.markup import escape
 
@@ -276,6 +278,7 @@ def _cmd_pull(args: argparse.Namespace) -> int:
     from .connectors import load_pull_config, pull
 
     pull_config = load_pull_config(args.config)
+    _apply_pull_params(pull_config, args.param)
     result = pull(pull_config, base_dir=_Path(args.config).resolve().parent)
 
     console.print(
@@ -298,6 +301,24 @@ def _cmd_pull(args: argparse.Namespace) -> int:
     return 0
 
 
+def _apply_pull_params(pull_config: dict, overrides: list[str]) -> None:
+    """Apply CLI ``key=value`` overrides to a pull source's bound parameters."""
+    if not overrides:
+        return
+    source = pull_config.get("source")
+    if not isinstance(source, dict):
+        raise ValueError("pull config needs a 'source' mapping before --param")
+    params = source.setdefault("params", {})
+    if not isinstance(params, dict):
+        raise ValueError("pull config source.params must be a mapping")
+    for item in overrides:
+        key, separator, value = item.partition("=")
+        key = key.strip()
+        if not separator or not key:
+            raise ValueError("--param must use key=value")
+        params[key] = yaml.safe_load(value)
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     from .server import serve
 
@@ -314,6 +335,22 @@ def _cmd_models(args: argparse.Namespace) -> int:
         p = pricing.get(mid)
         console.print(f"  {mid:<34} in ${p.input_per_m:<7} out ${p.output_per_m:<7} "
                       f"[dim]verified {p.verified or '?'}[/dim]")
+    return 0
+
+
+def _cmd_calibrate(args: argparse.Namespace) -> int:
+    from .calibration import import_calibration
+
+    result = import_calibration(args.config, history_path=args.history)
+    console.print(
+        f"[green]imported[/green] {result.imported} observation(s) from "
+        f"{result.source_path}"
+    )
+    console.print(
+        f"[dim]{result.matched} rows matched filters; "
+        f"{result.duplicates} duplicate(s), {result.skipped} skipped; "
+        f"benchmark fingerprint {result.config_fingerprint}[/dim]"
+    )
     return 0
 
 
@@ -372,6 +409,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="pull cases from an external source (e.g. SQL) into a local dump",
     )
     p_pull.add_argument("config", help="path to the pull config YAML")
+    p_pull.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="override a source query parameter (repeatable)",
+    )
     p_pull.set_defaults(func=_cmd_pull)
 
     p_serve = sub.add_parser(
@@ -383,6 +427,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_serve.add_argument("--no-open", action="store_true",
                          help="do not open a browser window")
     p_serve.set_defaults(func=_cmd_serve)
+
+    p_cal = sub.add_parser(
+        "calibrate",
+        help="import external token usage into local calibration history",
+    )
+    p_cal.add_argument("config", help="path to the calibration config YAML")
+    p_cal.add_argument(
+        "--history",
+        help="history JSONL path (default COSTBENCH_HISTORY or ~/.costbench/history.jsonl)",
+    )
+    p_cal.set_defaults(func=_cmd_calibrate)
 
     p_models = sub.add_parser("models", help="list models in the pricing table")
     p_models.set_defaults(func=_cmd_models)

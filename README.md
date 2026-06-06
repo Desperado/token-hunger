@@ -1,7 +1,20 @@
-# costbench
+# TokenHunger
 
-Benchmark any LLM-powered target by **cost per successful outcome**, not cost
-per token.
+**Don't waste tokens on expensive models.** TokenHunger shows which model
+delivers each correct result at the lowest cost, not which one has the lowest
+token price or the biggest name. Not every task needs a frontier model, and
+paying frontier prices for work a smaller model handles well is money burned.
+
+This is especially useful for **agents**: benchmark the kinds of steps an agent
+performs, then use the measured pass rates and costs to decide where a cheaper
+model is sufficient and where a more capable model earns its price.
+
+TokenHunger makes that tradeoff measurable. It benchmarks any LLM-powered
+target by **cost per successful outcome**, not cost per token, so failures count
+against apparently cheap models instead of being hidden by a low per-call price.
+
+> The command-line engine is `costbench` (see Quick Start). TokenHunger is the
+> product around it.
 
 A target can be:
 
@@ -53,26 +66,42 @@ For the complete technical inventory and boundaries, see
 
 ## Why
 
-Token prices do not answer the question engineering teams care about:
+Defaulting every call to the biggest model is expensive, while choosing only by
+token price ignores failures. TokenHunger measures both sides of that tradeoff:
+how often each target succeeds and how much each successful result costs.
 
-> Which implementation reaches our quality bar at the lowest real cost?
+The question it answers is not "what's the best model?" but:
 
-If target A costs `$0.001` per call and succeeds 70% of the time while target B
-costs `$0.0012` and succeeds 95%, target B can be cheaper per correct result.
+> Which model has the lowest cost per successful result — for *this* task?
 
-costbench makes that tradeoff visible:
+Token price alone can't answer it, because a cheap model that fails often may
+not be cheap per usable result. The metric is **cost per correct answer**, and
+it can cut either way: a smaller model can win when its savings outweigh its
+failures, while a pricier, more reliable model can win when the extra successes
+justify its price.
+
+Here is a real, keyless run from the working demo
+(`costbench run examples/offline/demo.yaml`) — a case where the cheaper target
+actually loses, because its extra failures cost more than the price it saved:
 
 ```text
 Target          Pass   Cost/run   Cost/SUCCESS
-premium-smart   100%   $0.00105   $0.00105
-cheap-naive      90%   $0.00100   $0.00111
+premium-smart   100%   $0.001050  $0.001050   ← cheaper per CORRECT answer
+cheap-naive      90%   $0.001000  $0.001111
 ```
+
+Flip the task to something the cheap model handles more reliably and the result
+can flip with it. The point is that you no longer have to guess: the report
+shows pass rate and cost per success together, so you can apply your own quality
+requirements before choosing a target.
 
 ## Quick Start
 
 Requires Python 3.10 or newer.
 
 ```bash
+git clone https://github.com/Desperado/token-hunger.git
+cd token-hunger
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -81,6 +110,17 @@ costbench run examples/offline/demo.yaml
 
 The offline demo uses two local classifiers, needs no API keys, and completes
 the full benchmark flow.
+
+Launch the local web UI:
+
+```bash
+costbench serve
+```
+
+This opens `http://127.0.0.1:8765/`. Loading the UI and generating estimates
+need no provider keys. To execute benchmarks against hosted models, install
+model support with `pip install -e ".[models]"` and put the provider keys those
+models require in a gitignored `.env`.
 
 Generate a shareable report:
 
@@ -112,6 +152,9 @@ Estimates always **round up** and carry the basis `estimated (...)` — they are
 never blended with verified `$/token` run costs. `run` records observed tokens
 to a local calibration history file (`~/.costbench/history.jsonl`, override with
 `COSTBENCH_HISTORY`, opt out with `--no-history`) so estimates tighten over time.
+Production token logs can be imported into that history with an explicit
+workload/target mapping via `costbench calibrate <config.yaml>`; see
+[`docs/CONNECTORS.md`](docs/CONNECTORS.md#importing-production-token-usage).
 
 The free-tier limit is a deliberate, **billing-free hook**: `estimate` is
 unlimited by default; a future host can cap it by setting

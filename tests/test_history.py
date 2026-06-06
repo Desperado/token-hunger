@@ -2,6 +2,7 @@ from costbench.history import (
     MIN_SAMPLES,
     Observation,
     append_observations,
+    append_unique_observations,
     load_observations,
     percentiles_for,
 )
@@ -62,3 +63,37 @@ def test_percentiles_nearest_rank_round_up():
 
 def test_load_missing_file_returns_empty(tmp_path):
     assert load_observations(path=tmp_path / "nope.jsonl") == []
+
+
+def test_unique_append_deduplicates_stable_observation_ids(tmp_path):
+    p = tmp_path / "history.jsonl"
+    observation = Observation(
+        config_fingerprint="cfg1",
+        target_id="target",
+        model_id="model",
+        input_tokens=10,
+        output_tokens=2,
+        cost=0.01,
+        passed=False,
+        ts="2026-06-06T00:00:00Z",
+        observation_id="external:cfg1:row-1",
+        source="external",
+        schema_version=2,
+    )
+
+    assert append_unique_observations([observation, observation], path=p) == 1
+    assert append_unique_observations([observation], path=p) == 0
+    assert len(load_observations(path=p)) == 1
+
+
+def test_old_history_rows_get_source_defaults(tmp_path):
+    p = tmp_path / "history.jsonl"
+    p.write_text(
+        '{"config_fingerprint":"cfg","target_id":"t","model_id":"m",'
+        '"input_tokens":1,"output_tokens":2,"cost":0.1,"passed":true,"ts":"x"}\n',
+        encoding="utf-8",
+    )
+
+    loaded = load_observations(path=p)
+    assert loaded[0].observation_id == ""
+    assert loaded[0].source == "run"

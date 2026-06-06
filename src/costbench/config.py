@@ -289,6 +289,7 @@ def build_config(
     raw: dict,
     *,
     base_dir: Path,
+    allowed_root: Optional[Path] = None,
     source_path: Optional[str] = None,
     default_name: str = "costbench",
     fingerprint_text: Optional[str] = None,
@@ -322,7 +323,11 @@ def build_config(
     # Lazy import avoids a circular dependency: sources imports Case from here.
     from .sources import load_cases
 
-    cases, content_key = load_cases(raw["cases"], base_dir=base_dir)
+    cases, content_key = load_cases(
+        raw["cases"],
+        base_dir=base_dir,
+        allowed_root=allowed_root,
+    )
 
     # Fingerprint the exact input bytes; for an in-memory config fall back to a
     # canonical JSON dump so the same posted config always fingerprints alike.
@@ -386,12 +391,17 @@ def _reject_local_code_under_sandbox(
         )
 
 
-def load_config(path: str | Path) -> Config:
+def load_config(
+    path: str | Path,
+    *,
+    allowed_root: Optional[str | Path] = None,
+) -> Config:
     text = Path(path).read_text(encoding="utf-8")
     raw = yaml.safe_load(text)
     return build_config(
         raw,
         base_dir=Path(path).resolve().parent,
+        allowed_root=Path(allowed_root).resolve() if allowed_root is not None else None,
         source_path=str(path),
         default_name=Path(path).stem,
         fingerprint_text=text,

@@ -1,0 +1,24 @@
+# Predict the deterministic grade recorded by QualityMax's route security audit.
+
+name: QualityMax - security finding grade prediction
+
+targets:
+  - type: model
+    id: anthropic/claude-haiku-4-5
+  - type: model
+    id: openai/gpt-5-mini
+
+task:
+  system: >
+    Classify the route security finding using QualityMax's grade vocabulary.
+    Reply with exactly one uppercase label: GREEN, YELLOW, RED, or ANON.
+  prompt_template: "{input}"
+
+check: exact
+
+cases:
+  source: file
+  path: ../../.context/qualitymax_security_findings.jsonl
+  input_field: input
+  expect_field: expect
+  drop_unlabeled: true

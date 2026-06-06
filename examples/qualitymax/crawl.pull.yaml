@@ -1,0 +1,80 @@
+# Pull completed and failed AI crawl jobs for one QualityMax project.
+#
+#   costbench pull examples/qualitymax/crawl.pull.yaml
+
+source:
+  type: sql
+  dsn_env: QUALITYMAX_DB_URL
+  params:
+    project_id: 1
+  query: |
+    select
+      j.id as crawl_job_id,
+      j.project_id,
+      j.test_case_id,
+      j.url,
+      j.depth,
+      j.test_type,
+      j.pages_limit,
+      j.framework,
+      j.exploration_strategy,
+      j.custom_instructions,
+      j.job_parameters,
+      coalesce(j.virtual_test_plan, vtp.plan_data) as virtual_test_plan,
+      vtp.validation_score,
+      vtp.validation_is_valid,
+      sg.coverage_score,
+      sg.total_states,
+      sg.total_transitions,
+      j.status,
+      j.error_message,
+      j.created_at,
+      j.updated_at
+    from ai_crawl_jobs j
+    left join virtual_test_plans vtp
+      on vtp.test_case_id = j.test_case_id
+    left join lateral (
+      select coverage_score, total_states, total_transitions
+      from crawl_state_graphs
+      where crawl_job_id = j.id
+      order by created_at desc
+      limit 1
+    ) sg on true
+    where j.project_id = %(project_id)s
+      and j.status in ('completed', 'failed')
+    order by j.id
+
+out: ../../.context/qualitymax_crawls.jsonl
+
+map:
+  input_template: |
+    URL: {url}
+    Test type: {test_type}
+    Framework: {framework}
+    Depth: {depth}
+    Page limit: {pages_limit}
+    Exploration strategy: {exploration_strategy}
+
+    Custom instructions:
+    {custom_instructions}
+
+    Job parameters:
+    {job_parameters}
+
+    Virtual test plan:
+    {virtual_test_plan}
+  expect: "{status}"
+  passthrough:
+    - crawl_job_id
+    - project_id
+    - test_case_id
+    - status
+    - error_message
+    - coverage_score
+    - total_states
+    - total_transitions
+    - validation_score
+    - validation_is_valid
+    - created_at
+    - updated_at
+  drop_unlabeled: true
