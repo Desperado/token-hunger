@@ -8,11 +8,13 @@ target or a competitor is editing YAML, not writing code.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -185,6 +187,55 @@ def _parse_cost(raw: Optional[dict]) -> CostSpec:
     return cost
 
 
+def _validate_endpoint_url(url: Any, allow_private: bool) -> None:
+    """Reject dangerous endpoint URLs (scheme + non-public host).
+
+    An endpoint target makes an outbound HTTP request to a config-supplied URL.
+    Always require an http/https scheme (no file://, gopher://, etc.). By default
+    also reject loopback/private/link-local hosts — including the cloud metadata
+    address 169.254.169.254 — so a config can't quietly point the benchmark at
+    internal services (SSRF, CWE-918). Benchmarking a genuinely local target (a
+    localhost model server, an internal API) stays possible with
+    ``allow_private_endpoint: true`` on the target.
+    """
+    if not isinstance(url, str):
+        raise ValueError(f"endpoint 'url' must be a string, got {url!r}")
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(
+            f"endpoint 'url' must use http or https, got scheme {parsed.scheme!r}"
+        )
+    host = parsed.hostname
+    if not host:
+        raise ValueError(f"endpoint 'url' has no host: {url!r}")
+    if allow_private:
+        return
+    lowered = host.lower()
+    if lowered == "localhost" or lowered.endswith(".localhost"):
+        raise ValueError(
+            f"endpoint 'url' points at loopback host {host!r}; set "
+            "'allow_private_endpoint: true' on the target to benchmark a local "
+            "service"
+        )
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return  # a hostname, not an IP literal we can classify at parse time
+    if (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_unspecified
+        or ip.is_multicast
+    ):
+        raise ValueError(
+            f"endpoint 'url' points at non-public address {host!r}; set "
+            "'allow_private_endpoint: true' on the target to benchmark a local "
+            "or internal service"
+        )
+
+
 def _parse_target(raw: dict) -> TargetSpec:
     if not isinstance(raw, dict):
         raise ValueError(f"target must be a mapping, got {raw!r}")
@@ -198,8 +249,12 @@ def _parse_target(raw: dict) -> TargetSpec:
     tid = raw.get("id") or raw.get("url") or raw.get("command")
     if not tid:
         raise ValueError(f"target missing 'id': {raw!r}")
-    if ttype == "endpoint" and not raw.get("url"):
-        raise ValueError(f"endpoint target missing 'url': {raw!r}")
+    if ttype == "endpoint":
+        if not raw.get("url"):
+            raise ValueError(f"endpoint target missing 'url': {raw!r}")
+        _validate_endpoint_url(
+            raw["url"], bool(raw.get("allow_private_endpoint", False))
+        )
     if ttype == "command" and not raw.get("command"):
         raise ValueError(f"command target missing 'command': {raw!r}")
     cost = _parse_cost(raw.get("cost"))
