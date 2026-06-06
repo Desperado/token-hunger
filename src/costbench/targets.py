@@ -13,8 +13,11 @@ run without them; they're only needed when you actually use a model/endpoint.
 from __future__ import annotations
 
 import json
+import math
 import os
+import shlex
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -245,6 +248,127 @@ class CommandTarget(Target):
         )
 
 
+# Where we stage the case input inside the sandbox so the command can read it
+# on stdin, mirroring CommandTarget's stdin->stdout contract.
+_E2B_INPUT_PATH = "/tmp/costbench_input"
+
+
+class E2BCommandTarget(Target):
+    """A command run inside an e2b cloud sandbox (isolated Firecracker microVM).
+
+    Same stdin->stdout contract as :class:`CommandTarget`, but the code runs off
+    your machine and the cost basis is *measured* rather than declared: billed
+    sandbox seconds x rate. Use it to (a) benchmark untrusted/external pipelines
+    safely and (b) get a real infra cost for `command` targets instead of an
+    'unknown'. Opt in per target with ``sandbox: e2b`` in the config.
+
+    Needs E2B_API_KEY in the environment and the optional ``e2b`` dependency.
+    """
+
+    _create_lock = threading.Lock()
+    _next_create_at = 0.0
+
+    def __init__(self, spec: TargetSpec):
+        self.spec = spec
+        cmd = spec.raw["command"]
+        # Sandbox execution goes through a shell so stdin redirection works;
+        # normalize a list form to a single shell string.
+        self.command = cmd if isinstance(cmd, str) else shlex.join(cmd)
+        self.template = spec.raw.get("sandbox_template")  # optional e2b template id
+        self.timeout = int(spec.raw.get("timeout", 120))
+        self.cost_spec: CostSpec = spec.cost
+        if self.cost_spec.basis != "per_second" or self.cost_spec.per_second is None:
+            raise ValueError(
+                "e2b command targets require a combined per-second cost rate"
+            )
+        # Hobby accounts allow one sandbox creation per second. Paid tiers can
+        # lower this interval explicitly while retaining account-wide pacing.
+        self.create_interval = float(spec.raw.get("sandbox_create_interval", 1.0))
+        if not math.isfinite(self.create_interval) or self.create_interval < 0:
+            raise ValueError(
+                "sandbox_create_interval must be a finite non-negative number"
+            )
+
+    def _wait_for_create_slot(self) -> None:
+        cls = type(self)
+        with cls._create_lock:
+            now = time.monotonic()
+            wait = max(0.0, cls._next_create_at - now)
+            if wait:
+                time.sleep(wait)
+            created_at = time.monotonic()
+            cls._next_create_at = created_at + self.create_interval
+
+    def _result(self, proc: Any, latency: float) -> CaseOutput:
+        """Build a CaseOutput from a command result *or* a non-zero-exit error.
+
+        e2b carries exit_code/stdout/stderr on both the success object and the
+        CommandExitException it raises, so one shape handles both.
+        """
+        exit_code = getattr(proc, "exit_code", 0) or 0
+        stdout = (getattr(proc, "stdout", "") or "").strip()
+        stderr = getattr(proc, "stderr", "") or ""
+        err = None if exit_code == 0 else f"exit {exit_code}: {stderr.strip()[:200]}"
+        return CaseOutput(
+            text=stdout, error=err, cost=self.cost_spec.cost_for_seconds(latency),
+            cost_basis="e2b-sandbox-seconds", latency=latency,
+        )
+
+    def run(self, task: TaskSpec, case_input: str) -> CaseOutput:
+        try:
+            from e2b import Sandbox  # lazy: optional dependency
+        except ImportError:
+            return CaseOutput(
+                text="",
+                error="e2b command targets need the optional dependency: pip install costbench[e2b]",
+            )
+        if not os.environ.get("E2B_API_KEY"):
+            return CaseOutput(
+                text="", error="environment variable 'E2B_API_KEY' is not set"
+            )
+
+        rendered = _render_prompt(task, case_input)
+        payload = rendered
+        if task.system:
+            payload = json.dumps({"system": task.system, "input": rendered})
+
+        self._wait_for_create_slot()
+        start = time.perf_counter()
+        sbx = None
+        proc = None
+        failure = None
+        try:
+            sbx = (
+                Sandbox.create(template=self.template)
+                if self.template
+                else Sandbox.create()
+            )
+            sbx.files.write(_E2B_INPUT_PATH, payload)
+            # Run through a shell so the command can read the case on stdin.
+            shell = f"{self.command} < {_E2B_INPUT_PATH}"
+            proc = sbx.commands.run(f"sh -c {shlex.quote(shell)}", timeout=self.timeout)
+        except Exception as exc:  # noqa: BLE001 — surface sandbox errors per-case
+            failure = exc
+        finally:
+            if sbx is not None:
+                try:
+                    sbx.kill()
+                except Exception:  # noqa: BLE001 — best-effort cleanup
+                    pass
+        latency = time.perf_counter() - start
+
+        if failure is not None:
+            # Non-zero exit comes back as an exception carrying the streams.
+            if getattr(failure, "exit_code", None) is not None:
+                return self._result(failure, latency)
+            return CaseOutput(
+                text="", error=f"{type(failure).__name__}: {failure}",
+                cost=self.cost_spec.cost_for_seconds(latency),
+                cost_basis="e2b-sandbox-seconds", latency=latency,
+            )
+        return self._result(proc, latency)
+
+
 # TODO(v2): native local_model target wrapping an ollama/vLLM server. Today,
 # serve local models as a `model` target via litellm (ollama/... or an
 # OpenAI-compatible localhost endpoint) or as a `command`/`endpoint` target.
@@ -256,5 +380,7 @@ def build_target(spec: TargetSpec, pricing: PricingTable) -> Target:
     if spec.type == "endpoint":
         return EndpointTarget(spec)
     if spec.type == "command":
+        if spec.raw.get("sandbox") == "e2b":
+            return E2BCommandTarget(spec)
         return CommandTarget(spec)
     raise ValueError(f"unknown target type: {spec.type!r}")

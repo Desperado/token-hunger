@@ -1,0 +1,58 @@
+# e2b sandbox demo — run a `command` target inside an isolated cloud microVM.
+#
+# Same stdin->stdout contract as a local `command` target, but the code runs
+# off your machine and the cost is MEASURED from billed sandbox seconds rather
+# than declared up front. Use it to safely benchmark an untrusted/external
+# pipeline, or to get a real infra cost for a homegrown agent.
+#
+# Needs:  pip install -e ".[e2b]"  and  export E2B_API_KEY=...
+#
+#   costbench run examples/sandbox/e2b.yaml
+#
+# Opt in per target with `sandbox: e2b`. Set the per-second rate to the combined
+# CPU + RAM price for your template; costbench intentionally has no stale
+# fallback rate. See https://e2b.dev/pricing.
+
+name: e2b sandbox demo
+
+targets:
+  # Local baseline for comparison (runs on your machine, declared cost).
+  - type: command
+    id: local-agent
+    command: ["python3", "examples/offline/classify.py", "smart"]
+    cost:
+      basis: per_request
+      per_request: 0.00105
+
+  # Same classifier, but executed in an e2b sandbox with a measured cost.
+  - type: command
+    id: sandboxed-agent
+    sandbox: e2b
+    # This command is self-contained because repository files do not exist in
+    # the base sandbox. Custom pipelines should use a template containing them.
+    command:
+      - python3
+      - -c
+      - |
+        import sys
+        text = sys.stdin.read().lower()
+        strong = ("pii", "security", "critical")
+        print("ESCALATE" if any(word in text for word in strong) else "RESOLVE")
+    # sandbox_template: <your e2b template id>   # optional; default base image
+    cost:
+      basis: per_second
+      # Default 2 vCPU + 1 GiB RAM rate as of June 2026. Check current pricing.
+      per_second: 0.0000325
+
+task:
+  prompt_template: "{input}"
+
+check: exact
+
+cases:
+  - input: "How do I reset my password?"
+    expect: RESOLVE
+  - input: "Customer PII is showing up in another tenant's view. Critical."
+    expect: ESCALATE
+  - input: "There's a typo on your pricing page."
+    expect: RESOLVE
