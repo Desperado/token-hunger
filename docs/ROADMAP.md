@@ -3,8 +3,8 @@
 ## Current foundation
 
 The local runner, offline demo, pre-run estimator, local calibration history,
-model suggestions, self-hosted GPU costing, report exporters, and
-configuration/pricing fingerprints are implemented. See
+model suggestions, optional LLM task analysis, self-hosted GPU costing, report
+exporters, and configuration/pricing fingerprints are implemented. See
 [CAPABILITIES.md](CAPABILITIES.md) for the current contract.
 
 ## SDK / proxy wrapper (DESIGN ONLY — not implemented)
@@ -39,6 +39,9 @@ under-estimate and violate over-estimate-safe. Tracked as v2 work; see the
 
 ## Other v2 candidates
 
+- Complexity-conditioned recommendations learned from benchmark history:
+  estimate success probability, cost, and latency for each task fingerprint,
+  then choose the cheapest model whose confidence bound clears the quality bar.
 - Native `local_model` target type wrapping an ollama/vLLM server (today: use a
   `model` target with a LiteLLM execution `model`, or an `endpoint`/`command`
   target).

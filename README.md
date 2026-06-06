@@ -26,6 +26,8 @@ costbench is an installable Python 3.10+ CLI with these implemented workflows:
 - price vendor models from a versioned table and self-hosted models from
   amortized GPU cost;
 - suggest candidate models from clearly labeled benchmark priors;
+- optionally classify task category and complexity with a user-selected cheap
+  LiteLLM model;
 - export Markdown, HTML, and JSON reports;
 - identify benchmark and pricing inputs with deterministic fingerprints;
 - run cases concurrently and return non-zero exit codes for execution errors.
@@ -114,6 +116,31 @@ using public benchmark priors, so you know what to try before writing a config:
 costbench suggest coding
 costbench suggest math --top 3
 ```
+
+You can also opt in to task analysis by a cheap LiteLLM model:
+
+```bash
+pip install -e ".[models]"
+costbench suggest \
+  --config benchmark.yaml \
+  --analyzer-model qwen/qwen3.5-flash
+```
+
+The analyzer returns:
+
+- a broad ranking type: `coding`, `math`, or `general`;
+- a functional category such as classification, extraction, or reasoning;
+- `low`, `medium`, or `high` complexity;
+- confidence, rationale, signals, token usage, and analyzer cost when priced.
+
+This sends the task instructions and at most five bounded case inputs to the
+selected model. Expected answers, targets, credentials, and pricing are not
+sent. Analysis is never automatic; passing `--analyzer-model` is explicit
+consent to the provider call.
+
+For the MVP, detected task type selects the static prior family. Complexity is
+informational and does not alter ranking until costbench has sufficient
+observed benchmark history to justify complexity-conditioned recommendations.
 
 Priors are a **starting point, not ground truth** — your own `costbench run` is
 ground truth. The bundled seed dataset currently contains clearly marked

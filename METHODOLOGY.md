@@ -116,6 +116,20 @@ Local calibration observations are selected by configuration fingerprint and
 target ID. They are useful for repeated local workloads, but they are not a
 substitute for production traffic measurement.
 
+## Task Analysis for Suggestions
+
+Suggestion analysis is an explicit provider call, not an offline operation.
+The selected LiteLLM model receives the task instructions and a bounded sample
+of case inputs. Expected outputs and target configuration are excluded.
+
+The analyzer produces a broad task type for selecting the current static prior
+family, plus category and complexity metadata. Complexity is not currently a
+ranking factor. Treat the classification as a bootstrap hint and validate the
+candidate models on the actual cases.
+
+When provider token usage and a matching price are available, costbench reports
+the analyzer call's cost.
+
 ## Latency
 
 Latency is wall-clock time observed by the runner. It includes network and
