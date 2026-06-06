@@ -80,25 +80,33 @@ def _numeric(tolerance: float = 0.0, relative: bool = False) -> Check:
     return check
 
 
-def _load_callable(spec: str) -> Callable:
-    """Load ``module/file.py:function`` from a path or importable module."""
+def _load_callable(spec: str, base_dir: Path | None = None) -> Callable:
+    """Load ``module/file.py:function`` from a path or importable module.
+
+    A relative file path is resolved against ``base_dir`` (the config file's
+    directory) when given, so a `code` check works regardless of the cwd — the
+    same rule a `file` case source uses. A cwd-relative path still resolves as a
+    fallback for back-compat.
+    """
     if ":" not in spec:
         raise ValueError(f"code check must be 'path.py:function', got {spec!r}")
     location, func_name = spec.rsplit(":", 1)
     path = Path(location)
+    if base_dir is not None and not path.is_absolute() and (base_dir / path).exists():
+        path = base_dir / path
     if path.exists():
         mod_spec = importlib.util.spec_from_file_location(path.stem, path)
         module = importlib.util.module_from_spec(mod_spec)
         mod_spec.loader.exec_module(module)  # type: ignore[union-attr]
     else:
-        import importlib
-
+        # `import importlib.util` at module scope already binds `importlib`; a
+        # local re-import here would shadow it and break the path branch above.
         module = importlib.import_module(location)
     return getattr(module, func_name)
 
 
-def _code(spec: str) -> Check:
-    fn = _load_callable(spec)
+def _code(spec: str, base_dir: Path | None = None) -> Check:
+    fn = _load_callable(spec, base_dir)
 
     def check(output: str, expect: Any) -> CheckResult:
         result = fn(output, expect)
@@ -112,7 +120,7 @@ def _code(spec: str) -> Check:
     return check
 
 
-def make_check(spec: Any) -> Check:
+def make_check(spec: Any, base_dir: Path | None = None) -> Check:
     """Build a check callable from a config value.
 
     ``spec`` may be a bare string (``"exact"``, ``"contains"``, ``"regex"``,
@@ -125,6 +133,9 @@ def make_check(spec: Any) -> Check:
         check:
           type: code
           function: checks.py:grade
+
+    ``base_dir`` (the config file's directory) is used to resolve a relative
+    ``code`` check path; it is ignored by the built-in deterministic checks.
     """
     if isinstance(spec, str):
         spec = {"type": spec}
@@ -144,7 +155,7 @@ def make_check(spec: Any) -> Check:
         target = spec.get("function") or spec.get("path")
         if not target:
             raise ValueError("code check needs a 'function' (path.py:name)")
-        return _code(target)
+        return _code(target, base_dir)
     raise ValueError(
         f"unknown check type {kind!r}; "
         "use exact, contains, regex, numeric, or code"

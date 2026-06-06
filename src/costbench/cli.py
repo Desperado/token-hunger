@@ -3,6 +3,7 @@
     costbench run <config.yaml>       run a benchmark, print the table
     costbench estimate <config.yaml>  predict cost WITHOUT running targets
     costbench suggest [task-type]     suggest models manually or via analysis
+    costbench pull <pull.yaml>        pull cases from an external source to a dump
     costbench init [path]             write a ready-to-run example config
     costbench models                  list models in the pricing table
 """
@@ -16,6 +17,7 @@ from importlib import resources
 from pathlib import Path
 
 from rich.console import Console
+from rich.markup import escape
 
 from . import __version__
 
@@ -224,6 +226,34 @@ def _cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_pull(args: argparse.Namespace) -> int:
+    from pathlib import Path as _Path
+
+    from .connectors import load_pull_config, pull
+
+    pull_config = load_pull_config(args.config)
+    result = pull(pull_config, base_dir=_Path(args.config).resolve().parent)
+
+    console.print(
+        f"[green]pulled[/green] {result.written} case(s) from "
+        f"[bold]{result.source}[/bold] → {result.out_path}"
+    )
+    if result.dropped_unlabeled:
+        console.print(
+            f"[yellow]dropped {result.dropped_unlabeled} unlabeled row(s)[/yellow] "
+            f"(of {result.rows} fetched) — they would not be scored"
+        )
+    console.print(
+        f"[dim]content fingerprint {result.fingerprint} "
+        f"(folded into the run fingerprint when this file is a 'cases.source: file')[/dim]"
+    )
+    console.print(
+        f"point a run config's cases at it:\n"
+        f"  cases:\n    source: file\n    path: {result.out_path}"
+    )
+    return 0
+
+
 def _cmd_models(args: argparse.Namespace) -> int:
     from .pricing import load_pricing
 
@@ -286,6 +316,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--force", action="store_true")
     p_init.set_defaults(func=_cmd_init)
 
+    p_pull = sub.add_parser(
+        "pull",
+        help="pull cases from an external source (e.g. SQL) into a local dump",
+    )
+    p_pull.add_argument("config", help="path to the pull config YAML")
+    p_pull.set_defaults(func=_cmd_pull)
+
     p_models = sub.add_parser("models", help="list models in the pricing table")
     p_models.set_defaults(func=_cmd_models)
 
@@ -298,10 +335,13 @@ def main(argv=None) -> int:
     try:
         return args.func(args)
     except FileNotFoundError as exc:
-        console.print(f"[red]file not found:[/red] {exc}")
+        console.print(f"[red]file not found:[/red] {escape(str(exc))}")
         return 1
     except ValueError as exc:
-        console.print(f"[red]config error:[/red] {exc}")
+        console.print(f"[red]config error:[/red] {escape(str(exc))}")
+        return 1
+    except RuntimeError as exc:
+        console.print(f"[red]error:[/red] {escape(str(exc))}")
         return 1
 
 

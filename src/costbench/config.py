@@ -200,26 +200,18 @@ def _parse_infra_cost(raw: Optional[dict]) -> Optional[InfraCost]:
     return InfraCost(gpu_hourly_rate=rate, throughput_tokens_per_sec=tput)
 
 
-def _parse_cases(raw_cases: list) -> list[Case]:
-    cases = []
-    for i, c in enumerate(raw_cases):
-        if not isinstance(c, dict):
-            raise ValueError(f"case {i} must be a mapping: {c!r}")
-        if "input" not in c or "expect" not in c:
-            raise ValueError(f"case {i} needs 'input' and 'expect': {c!r}")
-        cases.append(Case(input=str(c["input"]), expect=c["expect"], check=c.get("check")))
-    return cases
-
-
 def load_config(path: str | Path) -> Config:
     text = Path(path).read_text(encoding="utf-8")
     raw = yaml.safe_load(text)
     if not isinstance(raw, dict):
         raise ValueError("config root must be a mapping")
 
-    for key in ("targets", "cases"):
-        if not isinstance(raw.get(key), list) or not raw[key]:
-            raise ValueError(f"config needs a non-empty '{key}' list")
+    if not isinstance(raw.get("targets"), list) or not raw["targets"]:
+        raise ValueError("config needs a non-empty 'targets' list")
+    # 'cases' may be an inline list (original form) or a {source: ...} mapping
+    # resolved by the sources module; either way it must be present.
+    if not raw.get("cases"):
+        raise ValueError("config needs 'cases' (an inline list or a {source: ...} mapping)")
 
     task_raw = raw.get("task") or {}
     if not isinstance(task_raw, dict):
@@ -229,14 +221,23 @@ def load_config(path: str | Path) -> Config:
         prompt_template=task_raw.get("prompt_template", "{input}"),
     )
 
+    # Lazy import avoids a circular dependency: sources imports Case from here.
+    from .sources import load_cases
+
+    cases, content_key = load_cases(raw["cases"], base_dir=Path(path).resolve().parent)
+
+    # Fold the resolved-case content into the fingerprint so a file-sourced run
+    # is pinned to the bytes it actually scored, not just the config text.
+    fp_material = text if not content_key else f"{text}\ncases-content:{content_key}"
+
     return Config(
         name=raw.get("name", Path(path).stem),
         targets=[_parse_target(t) for t in raw["targets"]],
         task=task,
         check=raw.get("check", "exact"),
-        cases=_parse_cases(raw["cases"]),
+        cases=cases,
         pricing_overrides=raw.get("pricing", {}) or {},
         pricing_path=raw.get("pricing_path"),
         source_path=str(path),
-        fingerprint=hashlib.sha256(text.encode("utf-8")).hexdigest()[:12],
+        fingerprint=hashlib.sha256(fp_material.encode("utf-8")).hexdigest()[:12],
     )

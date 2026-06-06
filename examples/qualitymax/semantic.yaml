@@ -1,0 +1,36 @@
+# SECONDARY benchmark: does the target reproduce the expected_results text?
+#
+# This scores free-text output against the human-written `expected_results` using
+# an LLM-as-judge (examples/qualitymax/judge.py). Read judge.py's header first:
+# this number is ARGUABLE by design — it depends on a model's opinion — so it is
+# a diagnostic companion to label.yaml, NOT the headline cost-per-success metric.
+#
+#   export ANTHROPIC_API_KEY=...          # judge + targets
+#   costbench run examples/qualitymax/semantic.yaml --report md
+
+name: QualityMax — expected-results reproduction (semantic, secondary)
+
+targets:
+  - type: model
+    id: anthropic/claude-haiku-4-5
+  - type: model
+    id: openai/gpt-5-mini
+
+task:
+  system: >
+    Given the following test case, describe the expected result of executing it.
+  prompt_template: "{input}"
+
+# LLM-as-judge lives OUTSIDE core checks (a 'code' check), on purpose — core
+# checks stay deterministic. The judge compares the output to expect, which here
+# is the expected_results text rather than the pass/fail label.
+check:
+  type: code
+  function: judge.py:grade   # resolved relative to this config file
+
+cases:
+  source: file
+  path: ../../.context/qualitymax_cases.jsonl
+  input_field: input
+  expect_field: expected_results   # score against the free-text ground truth
+  drop_unlabeled: true

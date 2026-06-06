@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 from .checks import make_check
@@ -136,7 +137,9 @@ def run_benchmark(
         raise ValueError("concurrency must be at least 1")
 
     pricing = load_pricing(config.pricing_path).with_overrides(config.pricing_overrides)
-    default_check = make_check(config.check)
+    # Resolve relative `code` check paths against the config file's directory.
+    check_base = Path(config.source_path).resolve().parent if config.source_path else None
+    default_check = make_check(config.check, check_base)
 
     results: list[TargetResult] = []
     for spec in config.targets:
@@ -149,7 +152,7 @@ def run_benchmark(
 
         def run_case(case):
             out: CaseOutput = target.run(config.task, case.input)
-            check = make_check(case.check) if case.check else default_check
+            check = make_check(case.check, check_base) if case.check else default_check
             if out.error:
                 return CaseResult(case.input, case.expect, out.text, False,
                                   out.error, out.cost, out.cost_basis, out.latency,
