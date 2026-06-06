@@ -19,6 +19,7 @@ import shlex
 import subprocess
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -262,9 +263,12 @@ class CommandTarget(Target):
         )
 
 
-# Where we stage the case input inside the sandbox so the command can read it
-# on stdin, mirroring CommandTarget's stdin->stdout contract.
-_E2B_INPUT_PATH = "/tmp/costbench_input"
+# Directory inside the sandbox where each case's input is staged so the command
+# can read it on stdin, mirroring CommandTarget's stdin->stdout contract. Each
+# case gets a *unique* filename here: a pooled sandbox is reused across cases,
+# and re-writing one fixed path on a reused VM can fail with a permission error
+# ("open /tmp/costbench_input: permission denied"), so we never reopen a file.
+_E2B_INPUT_DIR = "/tmp"
 
 
 @dataclass
@@ -454,8 +458,10 @@ class E2BCommandTarget(Target):
             output.cost = total_cost * weight / total_weight
 
     def _execute(self, slot: _E2BSandboxSlot, payload: str) -> Any:
-        slot.sandbox.files.write(_E2B_INPUT_PATH, payload)
-        shell = f"{self.command} < {_E2B_INPUT_PATH}"
+        # Fresh path per case so a reused sandbox never reopens a staged file.
+        input_path = f"{_E2B_INPUT_DIR}/costbench_input_{uuid.uuid4().hex}"
+        slot.sandbox.files.write(input_path, payload)
+        shell = f"{self.command} < {shlex.quote(input_path)}"
         return slot.sandbox.commands.run(
             f"sh -c {shlex.quote(shell)}",
             timeout=self.timeout,
