@@ -1,0 +1,46 @@
+# HEADLINE benchmark: cost per correct PASS/FAIL verdict.
+#
+# The ground truth is QualityMax's real historical outcome
+# (automation_results.status), so "success" is deterministic and not arguable —
+# exactly the property a cost-per-success number needs. The target's job is to
+# predict the verdict for each test case; we score the prediction against the
+# recorded label off the dump produced by `costbench pull`.
+#
+#   costbench run examples/qualitymax/label.yaml --report md
+
+name: QualityMax — verdict prediction (cost per correct verdict)
+
+targets:
+  - type: model
+    id: anthropic/claude-haiku-4-5
+  - type: model
+    id: openai/gpt-5-mini
+
+  # Add QualityMax itself as a same-field competitor (no home-field advantage):
+  # - type: endpoint
+  #   id: qualitymax
+  #   url: https://app.qualitymax.io/api/v1/predict
+  #   auth_env: QUALITYMAX_API_KEY
+  #   request_template: { test_case: "{input}" }
+  #   response_path: verdict
+  #   cost:
+  #     basis: per_request
+  #     per_request: 0.01
+
+task:
+  system: >
+    You are predicting whether an automated UI test for the following test case
+    will PASS or FAIL when executed. Reply with exactly one word: PASS or FAIL.
+  prompt_template: "{input}"
+
+# Deterministic: does the model's word contain the recorded verdict? The labels
+# in the dump are QualityMax statuses like "passed"/"failed"; 'contains' matches
+# PASS↔passed case-insensitively. Swap to a code check if your statuses differ.
+check: contains
+
+cases:
+  source: file
+  path: ../../.context/qualitymax_cases.jsonl
+  input_field: input
+  expect_field: expect          # the deterministic result_status label
+  drop_unlabeled: true

@@ -1,0 +1,64 @@
+# Pull QualityMax test cases + their real execution outcomes into a local,
+# fingerprinted case dump. This is the IMPURE / networked step — run it once:
+#
+#   export QUALITYMAX_DB_URL='postgresql://READONLY_USER:...@db.<ref>.supabase.co:5432/postgres'
+#   costbench pull examples/qualitymax/pull.yaml
+#
+# Use a READ-ONLY database role. The connection string is read from the env var
+# named below — it is never stored in this (shareable) config. The query joins
+# each test case to its most recent automation result so the dump carries BOTH
+# grounds of truth: the deterministic pass/fail label AND the free-text expected
+# result. The run configs then choose which one to score against.
+
+source:
+  type: sql
+  dsn_env: QUALITYMAX_DB_URL
+  params:
+    # Scope to one project so you don't dump the whole tenant. Override per pull.
+    project_id: 1
+  query: |
+    select
+      tc.id                    as test_case_id,
+      tc.project_id            as project_id,
+      tc.title                 as title,
+      tc.description           as description,
+      tc.steps                 as steps,
+      tc.detailed_instructions as detailed_instructions,
+      tc.expected_results      as expected_results,
+      ar.status                as result_status,
+      ar.execution_time        as execution_time
+    from test_cases tc
+    left join lateral (
+      select status, execution_time
+      from automation_results
+      where test_case_id = tc.id
+      order by created_at desc
+      limit 1
+    ) ar on true
+    where tc.project_id = %(project_id)s
+      and tc.expected_results is not null
+
+out: ../../.context/qualitymax_cases.jsonl
+
+map:
+  # The task input the target must act on. Composed from the case fields.
+  input_template: |
+    Title: {title}
+
+    Description: {description}
+
+    Steps:
+    {steps}
+
+    {detailed_instructions}
+  # Headline ground truth: the real historical verdict (deterministic).
+  expect: "{result_status}"
+  # Carried along so the semantic run config can score against it instead.
+  passthrough:
+    - expected_results
+    - result_status
+    - execution_time
+    - test_case_id
+    - project_id
+  # A case with no recorded outcome can't be scored on the label metric.
+  drop_unlabeled: true

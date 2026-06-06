@@ -6,3 +6,7 @@ dist/
 build/
 *.egg-info/
 costbench-report.*
+costbench-estimate.*
+# Pulled case dumps may contain customer data — never commit them.
+.context/
+*.jsonl.meta.json
