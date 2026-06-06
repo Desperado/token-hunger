@@ -57,11 +57,35 @@ For endpoint and command targets, estimation uses only the declared
 per-request or subscription-amortized cost. It does not invent token usage for
 an opaque service.
 
-### `costbench suggest <task-type>`
+### `costbench suggest [task-type]`
 
 Ranks models with available priors and prices using quality-per-dollar. Priors
 are candidate-selection hints, not benchmark results. The bundled values are
 explicitly marked illustrative; see [PRIORS.md](PRIORS.md).
+
+The task type can be supplied manually or inferred with an opt-in analyzer:
+
+```bash
+costbench suggest \
+  --config benchmark.yaml \
+  --analyzer-model qwen/qwen3.5-flash
+```
+
+The analyzer calls the user-selected model through LiteLLM and returns:
+
+- broad prior family: coding, math, or general;
+- functional category;
+- low, medium, or high complexity;
+- confidence, explanation, and detected signals;
+- provider token usage and computed call cost when pricing is available.
+
+The payload is bounded to the task instructions, prompt template, check
+definition, and up to five case inputs. It excludes expected answers, target
+definitions, credentials, and prices. No analyzer call occurs unless
+`--analyzer-model` is explicitly provided.
+
+In the MVP, task type selects the static prior family. Complexity is displayed
+but does not modify the ranking score.
 
 ### `costbench init [path]`
 
@@ -170,7 +194,8 @@ The current implementation does not provide:
   modeling;
 - automatic case generation;
 - LLM-as-judge as a built-in correctness default;
-- production latency percentiles or distributed load testing.
+- production latency percentiles or distributed load testing;
+- complexity-conditioned ranking from historical benchmark outcomes.
 
 These boundaries keep local results inspectable while leaving operational
 platform features to future work.
