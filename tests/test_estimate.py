@@ -39,6 +39,41 @@ def test_priced_model_ceiling_range():
     assert e.calibrated is False
 
 
+def test_opus_4_8_uses_bundled_128k_output_limit():
+    pricing = PricingTable({
+        "anthropic/claude-opus-4-8": ModelPrice(
+            5.0,
+            25.0,
+            verified="2026-06-06",
+        )
+    })
+    cfg = _config([_model_target("anthropic/claude-opus-4-8")])
+
+    estimate = estimate_config(cfg, pricing, load_model_limits())[0]
+
+    assert estimate.output_ceiling == 128000
+    assert estimate.ceiling_source == "model_limits.yaml"
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "gemini/gemini-3.1-pro-preview",
+        "gemini/gemini-3.5-flash",
+        "gemini/gemini-3-flash-preview",
+        "gemini/gemini-3.1-flash-lite",
+    ],
+)
+def test_gemini_3_models_use_bundled_64k_output_limit(model_id):
+    pricing = PricingTable({model_id: ModelPrice(1.0, 1.0)})
+    cfg = _config([_model_target(model_id)])
+
+    estimate = estimate_config(cfg, pricing, load_model_limits())[0]
+
+    assert estimate.output_ceiling == 65536
+    assert estimate.ceiling_source == "model_limits.yaml"
+
+
 def test_unpriced_model_flagged():
     cfg = _config([_model_target("openai/unknown-x")])
     ests = estimate_config(cfg, _pricing(), load_model_limits())

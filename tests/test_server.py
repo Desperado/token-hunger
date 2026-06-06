@@ -29,6 +29,14 @@ def test_bootstrap_payload_has_task_cases_and_priced_models():
 
     ids = {m["id"] for m in b["models"]}
     assert "anthropic/claude-haiku-4-5" in ids
+    assert "anthropic/claude-opus-4-8" in ids
+    assert "anthropic/claude-sonnet-4-6" in ids
+    assert "anthropic/claude-haiku-4-6" not in ids
+    assert "gemini/gemini-3.1-pro-preview" in ids
+    assert "gemini/gemini-3.5-flash" in ids
+    assert "gemini/gemini-3-flash-preview" in ids
+    assert "gemini/gemini-3.1-flash-lite" in ids
+    assert "gemini/gemini-3-pro-preview" not in ids
     # vendor $/token models carry prices; amortized GPU models carry gpu/tput
     haiku = next(m for m in b["models"] if m["id"] == "anthropic/claude-haiku-4-5")
     assert haiku["basis"] == "vendor $/token" and haiku["inPrice"] > 0

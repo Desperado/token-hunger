@@ -16,13 +16,19 @@ anthropic/claude-haiku-4-5:
 
 anthropic/claude-sonnet-4-6:
   max_output_tokens: 64000
-  context_window: 200000
+  context_window: 1000000
   verified: 2026-06-06
   source: https://platform.claude.com/docs/en/about-claude/models
 
 anthropic/claude-opus-4-7:
   max_output_tokens: 32000
   context_window: 200000
+  verified: 2026-06-06
+  source: https://platform.claude.com/docs/en/about-claude/models
+
+anthropic/claude-opus-4-8:
+  max_output_tokens: 128000
+  context_window: 1000000
   verified: 2026-06-06
   source: https://platform.claude.com/docs/en/about-claude/models
 
@@ -49,6 +55,30 @@ gemini/gemini-2.5-pro:
   context_window: 1048576
   verified: 2026-06-06
   source: https://ai.google.dev/gemini-api/docs/models
+
+gemini/gemini-3.1-pro-preview:
+  max_output_tokens: 65536
+  context_window: 1048576
+  verified: 2026-06-06
+  source: https://ai.google.dev/gemini-api/docs/models/gemini
+
+gemini/gemini-3.5-flash:
+  max_output_tokens: 65536
+  context_window: 1048576
+  verified: 2026-06-06
+  source: https://ai.google.dev/gemini-api/docs/models/gemini
+
+gemini/gemini-3-flash-preview:
+  max_output_tokens: 65536
+  context_window: 1048576
+  verified: 2026-06-06
+  source: https://ai.google.dev/gemini-api/docs/models/gemini
+
+gemini/gemini-3.1-flash-lite:
+  max_output_tokens: 65536
+  context_window: 1048576
+  verified: 2026-06-06
+  source: https://ai.google.dev/gemini-api/docs/models/gemini
 
 mistral/mistral-large-3:
   max_output_tokens: 8192
