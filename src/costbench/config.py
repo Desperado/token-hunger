@@ -65,11 +65,23 @@ class CostSpec:
 
 
 @dataclass
+class InfraCost:
+    """Per-target override for an amortized-GPU (local/self-hosted) model.
+
+    A clean hook for the user's declared infra cost: their own GPU $/hour and
+    serving throughput override the pricing-table defaults at cost time."""
+
+    gpu_hourly_rate: Optional[float] = None
+    throughput_tokens_per_sec: Optional[float] = None
+
+
+@dataclass
 class TargetSpec:
     type: str  # model | endpoint | command
     id: str
     raw: dict[str, Any] = field(default_factory=dict)
     cost: CostSpec = field(default_factory=CostSpec)
+    infra_cost: Optional[InfraCost] = None
 
 
 @dataclass
@@ -159,7 +171,33 @@ def _parse_target(raw: dict) -> TargetSpec:
         id=str(tid) if not isinstance(tid, str) else tid,
         raw=raw,
         cost=_parse_cost(raw.get("cost")),
+        infra_cost=_parse_infra_cost(raw.get("infra_cost")),
     )
+
+
+def _parse_infra_cost(raw: Optional[dict]) -> Optional[InfraCost]:
+    if not raw:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"target infra_cost must be a mapping, got {raw!r}")
+    try:
+        rate = (
+            float(raw["gpu_hourly_rate"])
+            if raw.get("gpu_hourly_rate") is not None
+            else None
+        )
+        tput = (
+            float(raw["throughput_tokens_per_sec"])
+            if raw.get("throughput_tokens_per_sec") is not None
+            else None
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid numeric value in infra_cost: {raw!r}") from exc
+    if rate is not None and rate <= 0:
+        raise ValueError("infra_cost gpu_hourly_rate must be > 0")
+    if tput is not None and tput <= 0:
+        raise ValueError("infra_cost throughput_tokens_per_sec must be > 0")
+    return InfraCost(gpu_hourly_rate=rate, throughput_tokens_per_sec=tput)
 
 
 def _parse_cases(raw_cases: list) -> list[Case]:

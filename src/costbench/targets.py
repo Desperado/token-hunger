@@ -237,6 +237,11 @@ class CommandTarget(Target):
         )
 
 
+# TODO(v2): native local_model target wrapping an ollama/vLLM server. Today,
+# serve local models as a `model` target via litellm (ollama/... or an
+# OpenAI-compatible localhost endpoint) or as a `command`/`endpoint` target.
+
+
 def build_target(spec: TargetSpec, pricing: PricingTable) -> Target:
     if spec.type == "model":
         return ModelTarget(spec, pricing)

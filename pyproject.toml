@@ -29,6 +29,9 @@ dependencies = [
 [project.optional-dependencies]
 models = ["litellm>=1.40"]
 endpoint = ["httpx>=0.27"]
+# Optional keyless tokenizers used by `costbench estimate` for billing-grade
+# token counts. All are lazily imported; estimate still works (heuristic) without them.
+tokenizers = ["tiktoken>=0.7", "mistral-common>=1.4", "deepseek-tokenizer", "transformers>=4.50"]
 all = ["litellm>=1.40", "httpx>=0.27"]
 dev = ["pytest>=8.0", "litellm>=1.40", "httpx>=0.27"]
 
@@ -44,6 +47,9 @@ packages = ["src/costbench"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/costbench/pricing.yaml" = "costbench/pricing.yaml"
+"src/costbench/model_limits.yaml" = "costbench/model_limits.yaml"
+"src/costbench/priors.yaml" = "costbench/priors.yaml"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]

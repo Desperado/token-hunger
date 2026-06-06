@@ -55,6 +55,48 @@ costbench run examples/offline/demo.yaml \
 
 Available report formats are Markdown, HTML, and JSON.
 
+## Predict Cost Before You Spend
+
+`costbench estimate <config>` predicts cost from your config **without running a
+single target** — no API key, no network. It counts input tokens with a
+billing-grade tokenizer when one is installed (`pip install -e ".[tokenizers]"`)
+and an over-estimate-safe heuristic otherwise, then prices a range:
+
+- **input cost** is exact (computed from a real token count);
+- **output cost** is a worst-case ceiling from `max_tokens`/`model_limits.yaml`,
+  or a calibrated p50–p90 range once you have run history.
+
+```bash
+costbench estimate examples/classification.yaml
+costbench estimate examples/classification.yaml --max-output-tokens 256 --report md
+```
+
+Estimates always **round up** and carry the basis `estimated (...)` — they are
+never blended with verified `$/token` run costs. `run` records observed tokens
+to a local calibration history file (`~/.costbench/history.jsonl`, override with
+`COSTBENCH_HISTORY`, opt out with `--no-history`) so estimates tighten over time.
+
+The free-tier limit is a deliberate, **billing-free hook**: `estimate` is
+unlimited by default; a future host can cap it by setting
+`COSTBENCH_FREE_TIER_MAX_CASES` or replacing `limits_gate.check_estimate_quota`.
+No billing is implemented.
+
+## Suggest Models to Try
+
+`costbench suggest <task-type>` ranks candidate models by **quality-per-dollar**
+using public benchmark priors, so you know what to try before writing a config:
+
+```bash
+costbench suggest coding
+costbench suggest math --top 3
+```
+
+Priors are a **starting point, not ground truth** — your own `costbench run` is
+ground truth. The bundled seed dataset uses only openly-licensed benchmarks
+(HumanEval, MMLU-Pro) plus cited provider numbers. Artificial Analysis is **not
+bundled**; it is an opt-in runtime source requiring your own
+`ARTIFICIAL_ANALYSIS_API_KEY` (roadmap item). See [docs/PRIORS.md](docs/PRIORS.md).
+
 ## Compare Models
 
 Install model support:
@@ -167,6 +209,23 @@ check:
 
 Code checks and command targets execute local code. Only run trusted benchmark
 configurations.
+
+### Local / self-hosted models
+
+Self-hosted models (e.g. `local/gemma-27b`, `local/qwen-coder`) have no vendor
+`$/token` price. costbench prices them by **amortized GPU time** — a distinct
+cost basis (`amortized GPU (batch 1)`) that is never blended with vendor rates.
+The defaults in `pricing.yaml` are conservative (batch-size-1, over-estimate-
+safe); override them for your own hardware per target:
+
+```yaml
+targets:
+  - type: model
+    id: local/gemma-27b
+    infra_cost:
+      gpu_hourly_rate: 1.03         # your GPU $/hour
+      throughput_tokens_per_sec: 3100
+```
 
 ## Metric
 

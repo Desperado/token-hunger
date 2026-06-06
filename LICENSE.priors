@@ -1,0 +1,29 @@
+costbench bundled quality-priors — sourcing & licenses
+======================================================
+
+The seed quality priors in src/costbench/priors.yaml currently ship as
+ILLUSTRATIVE PLACEHOLDER values: they are synthetic, not measured, and are not
+attributed to any source. Nothing in this repo is republished from a benchmark
+result table, and no Artificial Analysis data is bundled (see docs/PRIORS.md).
+
+When the placeholders are replaced with real numbers, each value must come from
+a source that actually states it and must carry that source's license. Likely
+sources and their licenses:
+
+HumanEval (benchmark definition)
+  Repo:    https://github.com/openai/human-eval
+  License: MIT
+  Note:    defines the task; does NOT publish per-model scores. Cite a
+           leaderboard or system card that states the score, not this repo.
+
+MMLU-Pro (benchmark definition)
+  Repo:    https://github.com/TIGER-AI-Lab/MMLU-Pro
+  License: MIT
+  Note:    same as above — definition only, not a model-score table.
+
+Provider system cards / benchmark leaderboards
+  A real per-model number must be quoted from a source URL that contains it,
+  cited row-by-row in priors.yaml with the date it was verified.
+
+NOTE: priors.yaml is SEED DATA. Priors are a starting point, not ground truth —
+the only ground truth is your own `costbench run`.

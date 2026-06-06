@@ -69,6 +69,12 @@ def render_terminal(report: BenchmarkReport, console: Optional[Console] = None) 
         f"Methodology: {METHODOLOGY_URL}[/dim]"
     )
     for r in ranked:
+        if r.n_unpriced > 0:
+            console.print(
+                f"[yellow]{r.target_id}: {r.n_unpriced} of {r.n} cases unpriced — "
+                f"cost columns reflect only the {r.n_priced} priced cases.[/yellow]"
+            )
+    for r in ranked:
         if r.cost_note:
             console.print(f"[dim]{r.target_id} cost assumption: {r.cost_note}[/dim]")
 
@@ -84,6 +90,8 @@ def _row_dict(r: TargetResult) -> dict:
         "pass_rate": round(r.pass_rate, 4),
         "cost_basis": r.cost_basis,
         "cost_note": r.cost_note,
+        "n_priced": r.n_priced,
+        "n_unpriced": r.n_unpriced,
         "cost_per_run": r.cost_per_run,
         "cost_per_success": None if cps == float("inf") else cps,
         "cost_per_success_infinite": cps == float("inf"),
@@ -137,6 +145,12 @@ def to_markdown(report: BenchmarkReport) -> str:
         f"- `{r.target_id}` cost assumption: {r.cost_note}"
         for r in report.ranked_by_cost_per_success()
         if r.cost_note
+    ]
+    notes += [
+        f"- `{r.target_id}`: {r.n_unpriced} of {r.n} cases unpriced — cost "
+        f"columns reflect only the {r.n_priced} priced cases."
+        for r in report.ranked_by_cost_per_success()
+        if r.n_unpriced > 0
     ]
     if notes:
         lines += ["", "## Cost assumptions", "", *notes]
@@ -193,3 +207,145 @@ def write_report(report: BenchmarkReport, fmt: str, path: str) -> None:
         raise ValueError(f"unknown report format {fmt!r}")
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(renderers[fmt](report))
+
+
+# --- estimate rendering ------------------------------------------------------
+
+ESTIMATE_FOOTER = (
+    "Estimates only — NOT verified costs. Input cost is computed from a real "
+    "token count; output cost is a worst-case ceiling from max_output_tokens "
+    "(or a calibrated p50–p90 range when run history exists). Estimates round "
+    "UP. Run `costbench run <config>` for actual billed cost."
+)
+
+
+def _fmt_output_range(e) -> str:
+    if e.output_cost_low is None or e.output_cost_high is None:
+        return "—"
+    if e.output_cost_low == e.output_cost_high:
+        return f"≤ {_fmt_cost(e.output_cost_high)}"
+    return f"{_fmt_cost(e.output_cost_low)} – {_fmt_cost(e.output_cost_high)}"
+
+
+def _fmt_percase_range(e) -> str:
+    if e.per_case_low is None or e.per_case_high is None:
+        return "—"
+    if e.per_case_low == e.per_case_high:
+        return f"≤ {_fmt_cost(e.per_case_high)}"
+    return f"{_fmt_cost(e.per_case_low)} – {_fmt_cost(e.per_case_high)}"
+
+
+def render_estimate_terminal(estimates, console=None, config_fp="", pricing_fp=""):
+    console = console or Console()
+    table = Table(title="costbench estimate", title_style="bold")
+    table.add_column("Target", style="bold")
+    table.add_column("Type")
+    table.add_column("Cost basis")
+    table.add_column("Input cost (exact)", justify="right")
+    table.add_column("Output cost (range)", justify="right")
+    table.add_column("Est. cost/case (range)", justify="right", style="bold cyan")
+
+    for e in estimates:
+        table.add_row(
+            e.target_id,
+            e.target_type,
+            e.cost_basis,
+            _fmt_cost(e.input_cost_total) if e.input_cost_total is not None else "—",
+            _fmt_output_range(e),
+            _fmt_percase_range(e),
+        )
+    console.print(table)
+    console.print(
+        f"[dim]{ESTIMATE_FOOTER} Config {config_fp or 'n/a'}; "
+        f"pricing {pricing_fp or 'n/a'}.[/dim]"
+    )
+    for e in estimates:
+        bits = []
+        if e.tokenizer_method:
+            bits.append(
+                f"tokenizer {e.tokenizer_method} "
+                f"({'exact' if e.input_exact else 'approx'})"
+            )
+        if not e.calibrated and e.output_ceiling and e.priced and e.target_type == "model":
+            bits.append(
+                f"output ceiling {e.output_ceiling} tok via {e.ceiling_source}"
+            )
+        if e.note:
+            bits.append(e.note)
+        if bits:
+            console.print(f"[dim]{e.target_id}: {'; '.join(bits)}[/dim]")
+
+
+def _estimate_row_dict(e) -> dict:
+    return {
+        "target": e.target_id,
+        "type": e.target_type,
+        "n_cases": e.n_cases,
+        "priced": e.priced,
+        "cost_basis": e.cost_basis,
+        "calibrated": e.calibrated,
+        "input_cost_total": e.input_cost_total,
+        "output_cost_low": e.output_cost_low,
+        "output_cost_high": e.output_cost_high,
+        "per_case_low": e.per_case_low,
+        "per_case_high": e.per_case_high,
+        "output_ceiling": e.output_ceiling,
+        "ceiling_source": e.ceiling_source,
+        "tokenizer_method": e.tokenizer_method,
+        "input_exact": e.input_exact,
+        "note": e.note,
+    }
+
+
+def estimate_to_json(estimates, name, config_fp, pricing_fp) -> str:
+    payload = {
+        "kind": "estimate",
+        "schema_version": 1,
+        "name": name,
+        "config_fingerprint": config_fp,
+        "pricing_fingerprint": pricing_fp,
+        "disclaimer": ESTIMATE_FOOTER,
+        "estimates": [_estimate_row_dict(e) for e in estimates],
+    }
+    return json.dumps(payload, indent=2)
+
+
+def estimate_to_markdown(estimates, name, config_fp, pricing_fp) -> str:
+    lines = [
+        f"# costbench estimate — {name}",
+        "",
+        "**Estimates, not verified costs.** Input cost is computed from a real "
+        "token count; output cost is a worst-case ceiling (or a calibrated "
+        "p50–p90 range when run history exists). Estimates round UP.",
+        "",
+        "| Target | Type | Cost basis | Input cost (exact) | Output cost (range) | Est. cost/case (range) |",
+        "| --- | --- | --- | ---: | ---: | ---: |",
+    ]
+    for e in estimates:
+        inp = _fmt_cost(e.input_cost_total) if e.input_cost_total is not None else "—"
+        lines.append(
+            f"| {e.target_id} | {e.target_type} | {e.cost_basis} | {inp} "
+            f"| {_fmt_output_range(e)} | **{_fmt_percase_range(e)}** |"
+        )
+    lines += [
+        "",
+        f"_Config fingerprint `{config_fp or 'n/a'}`; pricing fingerprint "
+        f"`{pricing_fp or 'n/a'}`._",
+        "",
+        ESTIMATE_FOOTER,
+    ]
+    notes = [f"- `{e.target_id}`: {e.note}" for e in estimates if e.note]
+    if notes:
+        lines += ["", "## Notes", "", *notes]
+    return "\n".join(lines)
+
+
+def write_estimate_report(estimates, fmt, path, name="", config_fp="", pricing_fp=""):
+    if fmt in ("md", "markdown"):
+        text = estimate_to_markdown(estimates, name, config_fp, pricing_fp)
+    elif fmt == "json":
+        text = estimate_to_json(estimates, name, config_fp, pricing_fp)
+    else:
+        raise ValueError(f"unknown estimate report format {fmt!r}")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text)

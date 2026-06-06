@@ -28,6 +28,10 @@ class CaseResult:
     cost_basis: str
     latency: float
     error: Optional[str] = None
+    # Observed token usage (when the target can report it). Additive, defaults
+    # None, so no caller breaks; consumed by the calibration-history write hook.
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
 
 
 @dataclass
@@ -54,25 +58,39 @@ class TargetResult:
         return self.passes / self.n if self.n else 0.0
 
     @property
+    def n_priced(self) -> int:
+        return sum(1 for c in self.cases if c.cost is not None)
+
+    @property
+    def n_unpriced(self) -> int:
+        return self.n - self.n_priced
+
+    @property
     def cost_known(self) -> bool:
-        return all(c.cost is not None for c in self.cases) and self.n > 0
+        """True if AT LEAST ONE case has a known cost."""
+        return self.n_priced > 0
 
     @property
     def total_cost(self) -> Optional[float]:
-        if not self.cost_known:
+        """Sum of KNOWN per-case costs. None only if nothing is priced."""
+        if self.n_priced == 0:
             return None
-        return sum(c.cost for c in self.cases)  # type: ignore[misc]
+        return sum(c.cost for c in self.cases if c.cost is not None)
 
     @property
     def cost_per_run(self) -> Optional[float]:
+        """Total known cost divided by number of PRICED cases (not n).
+
+        Divides by n_priced so the per-run figure is the average cost of the
+        cases we could actually price — it is not deflated by unpriced cases."""
         total = self.total_cost
-        return total / self.n if total is not None and self.n else None
+        return total / self.n_priced if total is not None and self.n_priced else None
 
     @property
     def cost_per_success(self) -> Optional[float]:
-        """Total cost divided by number of correct outputs. The headline.
+        """Total KNOWN cost divided by number of correct outputs. The headline.
 
-        Returns None if cost is unknown; float('inf') if nothing passed (you
+        Returns None if nothing is priced; float('inf') if nothing passed (you
         paid and got zero correct answers — honestly infinite cost/success)."""
         total = self.total_cost
         if total is None:
@@ -135,10 +153,14 @@ def run_benchmark(
             if out.error:
                 return CaseResult(case.input, case.expect, out.text, False,
                                   out.error, out.cost, out.cost_basis, out.latency,
-                                  error=out.error)
+                                  error=out.error,
+                                  input_tokens=out.input_tokens,
+                                  output_tokens=out.output_tokens)
             verdict = check(out.text, case.expect)
             return CaseResult(case.input, case.expect, out.text, verdict.passed,
-                              verdict.detail, out.cost, out.cost_basis, out.latency)
+                              verdict.detail, out.cost, out.cost_basis, out.latency,
+                              input_tokens=out.input_tokens,
+                              output_tokens=out.output_tokens)
 
         if concurrency > 1:
             with ThreadPoolExecutor(max_workers=concurrency) as pool:
