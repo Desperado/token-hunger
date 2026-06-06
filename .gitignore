@@ -14,3 +14,11 @@ costbench-estimate.*
 *.jsonl.meta.json
 *.json.meta.json
 *.csv.meta.json
+
+# macOS
+.DS_Store
+
+# Local secrets — copy .env.template to .env and fill in. Never commit .env.
+.env
+.env.*
+!.env.template

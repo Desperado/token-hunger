@@ -33,7 +33,15 @@ costbench is an installable Python 3.10+ CLI with these implemented workflows:
 - run cases concurrently and return non-zero exit codes for execution errors;
 - pull cases from an external source (e.g. a SQL database) into a local,
   fingerprinted dump, then benchmark offline against it (see
-  [docs/CONNECTORS.md](docs/CONNECTORS.md)).
+  [docs/CONNECTORS.md](docs/CONNECTORS.md));
+- explore all of the above in a local web UI with `costbench serve` — a
+  keyless cost estimate updates live as you pick targets, and **Run** executes
+  the real benchmark and ranks targets by cost per success.
+
+`costbench serve` is deliberately loopback-only because Run can spend provider
+credits using keys in the server process. Keep secrets in a gitignored,
+owner-readable `.env` (`chmod 600 .env`), never in benchmark YAML. Endpoint
+`auth_env` tokens should be short-lived and least-privilege where possible.
 
 The estimator requires no API key or target execution. Tokenizer cache misses
 fall back to a local heuristic rather than downloading assets. Partial

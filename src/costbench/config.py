@@ -8,6 +8,7 @@ target or a competitor is editing YAML, not writing code.
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -248,9 +249,22 @@ def _parse_infra_cost(raw: Optional[dict]) -> Optional[InfraCost]:
     return InfraCost(gpu_hourly_rate=rate, throughput_tokens_per_sec=tput)
 
 
-def load_config(path: str | Path) -> Config:
-    text = Path(path).read_text(encoding="utf-8")
-    raw = yaml.safe_load(text)
+def build_config(
+    raw: dict,
+    *,
+    base_dir: Path,
+    source_path: Optional[str] = None,
+    default_name: str = "costbench",
+    fingerprint_text: Optional[str] = None,
+) -> Config:
+    """Build a :class:`Config` from an already-parsed mapping.
+
+    This is the shared core of :func:`load_config`; it also lets in-process
+    callers (the server) build a config from posted JSON without writing a file.
+    ``base_dir`` resolves a ``file`` case source; ``fingerprint_text`` is the
+    exact bytes to fingerprint (the YAML text for a file, a canonical JSON dump
+    for an in-memory config) so the fingerprint stays stable per input.
+    """
     if not isinstance(raw, dict):
         raise ValueError("config root must be a mapping")
 
@@ -272,20 +286,40 @@ def load_config(path: str | Path) -> Config:
     # Lazy import avoids a circular dependency: sources imports Case from here.
     from .sources import load_cases
 
-    cases, content_key = load_cases(raw["cases"], base_dir=Path(path).resolve().parent)
+    cases, content_key = load_cases(raw["cases"], base_dir=base_dir)
 
-    # Fold the resolved-case content into the fingerprint so a file-sourced run
-    # is pinned to the bytes it actually scored, not just the config text.
-    fp_material = text if not content_key else f"{text}\ncases-content:{content_key}"
+    # Fingerprint the exact input bytes; for an in-memory config fall back to a
+    # canonical JSON dump so the same posted config always fingerprints alike.
+    if fingerprint_text is None:
+        fingerprint_text = json.dumps(raw, sort_keys=True, default=str)
+    # Fold the resolved-case content in so a file-sourced run is pinned to the
+    # bytes it actually scored, not just the config text.
+    fp_material = (
+        fingerprint_text
+        if not content_key
+        else f"{fingerprint_text}\ncases-content:{content_key}"
+    )
 
     return Config(
-        name=raw.get("name", Path(path).stem),
+        name=raw.get("name", default_name),
         targets=[_parse_target(t) for t in raw["targets"]],
         task=task,
         check=raw.get("check", "exact"),
         cases=cases,
         pricing_overrides=raw.get("pricing", {}) or {},
         pricing_path=raw.get("pricing_path"),
-        source_path=str(path),
+        source_path=source_path,
         fingerprint=hashlib.sha256(fp_material.encode("utf-8")).hexdigest()[:12],
+    )
+
+
+def load_config(path: str | Path) -> Config:
+    text = Path(path).read_text(encoding="utf-8")
+    raw = yaml.safe_load(text)
+    return build_config(
+        raw,
+        base_dir=Path(path).resolve().parent,
+        source_path=str(path),
+        default_name=Path(path).stem,
+        fingerprint_text=text,
     )
