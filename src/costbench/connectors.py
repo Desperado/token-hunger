@@ -136,9 +136,18 @@ def materialize(
         out_rows.append(record)
 
     # Deterministic bytes: stable key order, no run-to-run nondeterminism, so the
-    # same query result always produces the same fingerprint.
+    # same query result always produces the same fingerprint. psycopg returns
+    # native UUID/datetime/Decimal values, so serialize those through their
+    # stable string representation instead of requiring every SQL query to cast.
     payload = "".join(
-        json.dumps(r, separators=(",", ":"), sort_keys=True, ensure_ascii=False) + "\n"
+        json.dumps(
+            r,
+            separators=(",", ":"),
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
+        )
+        + "\n"
         for r in out_rows
     )
     fingerprint = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]

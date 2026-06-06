@@ -20,6 +20,7 @@ keeps out of core checks (see ``checks.py``).
 from __future__ import annotations
 
 from importlib import resources
+from pathlib import Path
 
 
 def _triage_from_yaml() -> dict:
@@ -632,9 +633,37 @@ _ROOT_CAUSE = {
 }
 
 
-def presets() -> list[dict]:
+def _qualitymax_crawl_preset(base_dir: Path) -> dict | None:
+    """Load a pulled QualityMax crawl dump when running from the repository."""
+    config_path = base_dir / "examples" / "qualitymax" / "crawl.label.yaml"
+    if not config_path.is_file():
+        return None
+    try:
+        from .config import load_config
+
+        config = load_config(config_path)
+    except (FileNotFoundError, ValueError):
+        return None
+    return {
+        "id": "qualitymax-crawls",
+        "name": "QualityMax AI crawl outcomes",
+        "level": 3,
+        "configFingerprint": config.fingerprint,
+        "task": {
+            "system": config.task.system,
+            "promptTemplate": config.task.prompt_template,
+            "check": config.check,
+        },
+        "cases": [
+            {"input": case.input, "expect": case.expect}
+            for case in config.cases[:1000]
+        ],
+    }
+
+
+def presets(base_dir: Path | None = None) -> list[dict]:
     """All UI example tasks; the first is the default."""
-    return [
+    examples = [
         _triage_from_yaml(),
         _MATH,
         _CAPITALS,
@@ -655,3 +684,8 @@ def presets() -> list[dict]:
         _RELEASE_GOVERNANCE,
         _ROOT_CAUSE,
     ]
+    if base_dir is not None:
+        qualitymax = _qualitymax_crawl_preset(base_dir)
+        if qualitymax:
+            examples.append(qualitymax)
+    return examples

@@ -34,6 +34,8 @@ class Observation:
     passed: bool
     ts: str
     pricing_fingerprint: str = ""
+    observation_id: str = ""
+    source: str = "run"
     schema_version: int = 1
 
 
@@ -61,6 +63,29 @@ def append_observations(obs: list[Observation], path: Optional[str | Path] = Non
             fh.write(json.dumps(asdict(o), separators=(",", ":")) + "\n")
 
 
+def append_unique_observations(
+    obs: list[Observation], path: Optional[str | Path] = None
+) -> int:
+    """Append observations, skipping imported rows already present by stable ID."""
+    if not obs:
+        return 0
+    existing_ids = {
+        o.observation_id
+        for o in load_observations(path)
+        if o.observation_id
+    }
+    unique: list[Observation] = []
+    seen = set(existing_ids)
+    for observation in obs:
+        if observation.observation_id and observation.observation_id in seen:
+            continue
+        unique.append(observation)
+        if observation.observation_id:
+            seen.add(observation.observation_id)
+    append_observations(unique, path)
+    return len(unique)
+
+
 def load_observations(path: Optional[str | Path] = None) -> list[Observation]:
     """Load all observations, tolerating malformed lines (skip and continue)."""
     p = Path(path).expanduser() if path is not None else history_path()
@@ -84,6 +109,8 @@ def load_observations(path: Optional[str | Path] = None) -> list[Observation]:
                     passed=bool(d.get("passed", False)),
                     ts=d.get("ts", ""),
                     pricing_fingerprint=d.get("pricing_fingerprint", ""),
+                    observation_id=d.get("observation_id", ""),
+                    source=d.get("source", "run"),
                     schema_version=int(d.get("schema_version", 1)),
                 )
             )
