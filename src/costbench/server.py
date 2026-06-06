@@ -118,6 +118,38 @@ def _validate_web_check(check: Any) -> None:
             raise ValueError("task.check.tolerance must be a non-negative number")
 
 
+def _validate_sandbox(sandbox: Any) -> None:
+    """Validate the optional e2b-sandbox target block (UI 'Run in E2B' toggle).
+
+    The server normally only runs `model` targets; this opt-in block lets the UI
+    run a single `command` target inside an e2b sandbox. It stays loopback-only
+    (enforced per request) and the command is the operator's own — the same trust
+    boundary as a local CLI config.
+    """
+    if not isinstance(sandbox, dict):
+        raise ValueError("sandbox must be an object")
+    command = sandbox.get("command")
+    if not isinstance(command, str) or not command.strip():
+        raise ValueError("sandbox.command must be a non-empty string")
+    if len(command) > 4000:
+        raise ValueError("sandbox.command is too long")
+    rate = sandbox.get("perSecond")
+    if (
+        not isinstance(rate, (int, float))
+        or isinstance(rate, bool)
+        or not 0 < rate <= 1
+    ):
+        raise ValueError(
+            "sandbox.perSecond must be a positive USD/second rate (<= 1)"
+        )
+    template = sandbox.get("template")
+    if template not in (None, ""):
+        _validate_text(template, "sandbox.template")
+    pool = sandbox.get("poolSize", 10)
+    if not isinstance(pool, int) or isinstance(pool, bool) or not 1 <= pool <= 10:
+        raise ValueError("sandbox.poolSize must be an integer between 1 and 10")
+
+
 def _validate_run_body(body: Any, *, allow_empty: bool = False) -> dict:
     if not isinstance(body, dict):
         raise ValueError("request body must be a JSON object")
@@ -128,12 +160,23 @@ def _validate_run_body(body: Any, *, allow_empty: bool = False) -> dict:
     _validate_text(task.get("promptTemplate", "{input}"), "task.promptTemplate")
     _validate_web_check(task.get("check", "exact"))
 
-    targets = body.get("targets")
+    # Sandbox mode: the lone target is a command run in an e2b sandbox, so the
+    # model-ids requirement is relaxed (targets is ignored). Otherwise require
+    # 1..MAX_TARGETS model ids exactly as before.
+    sandbox = body.get("sandbox")
     cases = body.get("cases")
-    if not isinstance(targets, list) or (not targets and not allow_empty):
-        raise ValueError("targets must be a non-empty array")
-    if len(targets) > MAX_TARGETS or not all(isinstance(t, str) and t for t in targets):
-        raise ValueError(f"targets must contain 1-{MAX_TARGETS} model ids")
+    if sandbox is not None:
+        _validate_sandbox(sandbox)
+        n_targets = 1
+    else:
+        targets = body.get("targets")
+        if not isinstance(targets, list) or (not targets and not allow_empty):
+            raise ValueError("targets must be a non-empty array")
+        if len(targets) > MAX_TARGETS or not all(
+            isinstance(t, str) and t for t in targets
+        ):
+            raise ValueError(f"targets must contain 1-{MAX_TARGETS} model ids")
+        n_targets = len(targets)
     if not isinstance(cases, list) or (not cases and not allow_empty):
         raise ValueError("cases must be a non-empty array")
     if len(cases) > MAX_CASES:
@@ -144,7 +187,7 @@ def _validate_run_body(body: Any, *, allow_empty: bool = False) -> dict:
         _validate_text(case["input"], f"cases[{i}].input")
         if isinstance(case["expect"], (dict, list)):
             raise ValueError(f"cases[{i}].expect must be a scalar")
-    if len(targets) * len(cases) > MAX_RUNS:
+    if n_targets * len(cases) > MAX_RUNS:
         raise ValueError(f"a request cannot exceed {MAX_RUNS} target/case calls")
     fingerprint = body.get("configFingerprint")
     if fingerprint is not None and not re.fullmatch(r"[0-9a-f]{12}", fingerprint):
@@ -219,16 +262,37 @@ def _is_allowed_origin(value: str | None) -> bool:
     )
 
 
+def _sandbox_target(sandbox: dict) -> dict:
+    """Translate the UI sandbox block into an e2b command TargetSpec dict."""
+    target = {
+        "type": "command",
+        "id": sandbox.get("id") or "sandboxed-agent",
+        "sandbox": "e2b",
+        "command": sandbox["command"],
+        "sandbox_pool_size": int(sandbox.get("poolSize", 10)),
+        "cost": {"basis": "per_second", "per_second": float(sandbox["perSecond"])},
+    }
+    if sandbox.get("template"):
+        target["sandbox_template"] = sandbox["template"]
+    return target
+
+
 def _build_cfg(
     task: dict,
     target_ids: list[str],
     cases: list[dict],
     *,
+    sandbox: dict | None = None,
     config_fingerprint: str | None = None,
 ):
     """Build a real Config from the posted task/targets/cases (no file written)."""
     from .config import build_config
 
+    targets = (
+        [_sandbox_target(sandbox)]
+        if sandbox is not None
+        else [{"type": "model", "id": tid} for tid in target_ids]
+    )
     raw = {
         "name": task.get("name", "costbench"),
         "task": {
@@ -236,7 +300,7 @@ def _build_cfg(
             "prompt_template": task.get("promptTemplate", "{input}"),
         },
         "check": task.get("check", "exact"),
-        "targets": [{"type": "model", "id": tid} for tid in target_ids],
+        "targets": targets,
         "cases": [{"input": c["input"], "expect": c["expect"]} for c in cases],
     }
     config = build_config(raw, base_dir=Path.cwd())
@@ -335,6 +399,14 @@ def estimate_payload(body: dict) -> dict:
     cases = body.get("cases") or []
     out_override = body.get("outputTokens")
 
+    # Sandbox cost is measured from runtime, not estimable up front.
+    if body.get("sandbox") is not None:
+        return {
+            "rows": [],
+            "meta": {"nCases": len(cases), "sandbox": True,
+                     "note": "e2b cost is measured at run time, not estimated"},
+        }
+
     cfg = _build_cfg(
         task,
         target_ids,
@@ -430,7 +502,7 @@ def run_payload(body: dict, case_progress=None) -> dict:
     cases = body.get("cases") or []
     concurrency = int(body.get("concurrency", 4))
 
-    cfg = _build_cfg(task, target_ids, cases)
+    cfg = _build_cfg(task, target_ids, cases, sandbox=body.get("sandbox"))
     pricing = load_pricing()
     report = run_benchmark(
         cfg,
@@ -495,7 +567,9 @@ def stream_run_payload(body: dict, emit) -> dict:
     """Run a benchmark and emit JSON-serializable lifecycle events."""
     target_ids = body.get("targets") or []
     cases = body.get("cases") or []
-    total = len(target_ids) * len(cases)
+    # In sandbox mode the single command target replaces the model list.
+    n_targets = 1 if body.get("sandbox") is not None else len(target_ids)
+    total = n_targets * len(cases)
     concurrency = int(body.get("concurrency", 4))
     started = time.monotonic()
     completed = passes = errors = 0
@@ -504,7 +578,7 @@ def stream_run_payload(body: dict, emit) -> dict:
         "type": "start",
         "completed": 0,
         "total": total,
-        "targets": len(target_ids),
+        "targets": n_targets,
         "cases": len(cases),
         "concurrency": concurrency,
     })

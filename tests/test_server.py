@@ -4,6 +4,9 @@ These cover the offline paths (bootstrap + estimate). `run` needs provider
 keys, so it is not exercised here; its shaping is covered by the runner tests.
 """
 
+import sys
+from types import SimpleNamespace
+
 from costbench import server
 from costbench.history import Observation, append_observations
 import pytest
@@ -224,3 +227,110 @@ def test_static_path_containment_guard_logic():
     root = server.UI_DIR.resolve()
     assert root in (root / "styles.css").resolve().parents
     assert root not in (root / "../pricing.yaml").resolve().parents
+
+
+# --- e2b sandbox run from the UI ------------------------------------------
+
+
+def _install_fake_e2b(monkeypatch):
+    class _Sandbox:
+        instances = []
+
+        def __init__(self):
+            self.written = {}
+            self.killed = False
+            _Sandbox.instances.append(self)
+
+        @classmethod
+        def create(cls, template=None):
+            return cls()
+
+        def kill(self):
+            self.killed = True
+
+        @property
+        def files(self):
+            sbx = self
+
+            class _Files:
+                def write(self, path, content):
+                    sbx.written[path] = content
+
+            return _Files()
+
+        @property
+        def commands(self):
+            class _Commands:
+                def run(self, cmd, timeout=None):
+                    return SimpleNamespace(exit_code=0, stdout="ANSWER\n", stderr="")
+
+            return _Commands()
+
+    monkeypatch.setitem(sys.modules, "e2b", SimpleNamespace(Sandbox=_Sandbox))
+    monkeypatch.setenv("E2B_API_KEY", "test-key")
+    from costbench.targets import E2BCommandTarget
+    E2BCommandTarget._next_create_at = 0.0
+    _Sandbox.instances = []
+    return _Sandbox
+
+
+def test_sandbox_run_validation_relaxes_targets_and_checks_fields():
+    body = {
+        "task": {"promptTemplate": "{input}", "check": "exact"},
+        "cases": [{"input": "q", "expect": "ANSWER"}],
+        "sandbox": {"command": "cat", "perSecond": 0.0000325, "poolSize": 5},
+    }
+    # targets not required when a sandbox block is present
+    assert server.validate_request("/api/run", body) is body
+
+    bad = lambda sb: server.validate_request("/api/run", {**body, "sandbox": sb})
+    with pytest.raises(ValueError, match="sandbox.command"):
+        bad({"command": "", "perSecond": 0.1})
+    with pytest.raises(ValueError, match="perSecond"):
+        bad({"command": "cat", "perSecond": 0})
+    with pytest.raises(ValueError, match="poolSize"):
+        bad({"command": "cat", "perSecond": 0.1, "poolSize": 99})
+
+
+def test_build_cfg_builds_e2b_command_target():
+    cfg = server._build_cfg(
+        {"promptTemplate": "{input}", "check": "exact"},
+        [],
+        [{"input": "q", "expect": "a"}],
+        sandbox={"command": "cat", "perSecond": 0.0000325, "poolSize": 7, "template": "tmpl"},
+    )
+    assert len(cfg.targets) == 1
+    target = cfg.targets[0]
+    assert target.type == "command"
+    assert target.raw["sandbox"] == "e2b"
+    assert target.raw["sandbox_template"] == "tmpl"
+    assert target.raw["sandbox_pool_size"] == 7
+    assert target.cost.basis == "per_second"
+    assert target.cost.per_second == 0.0000325
+
+
+def test_estimate_skips_sandbox():
+    out = server.estimate_payload({
+        "task": {"promptTemplate": "{input}", "check": "exact"},
+        "cases": [{"input": "q", "expect": "a"}],
+        "sandbox": {"command": "cat", "perSecond": 0.001},
+    })
+    assert out["rows"] == []
+    assert out["meta"]["sandbox"] is True
+
+
+def test_sandbox_run_payload_executes_and_costs(monkeypatch):
+    fake = _install_fake_e2b(monkeypatch)
+    out = server.run_payload({
+        "task": {"promptTemplate": "{input}", "check": "exact"},
+        "cases": [{"input": "x", "expect": "ANSWER"}],
+        "sandbox": {"command": "cat", "perSecond": 0.001, "poolSize": 2},
+        "concurrency": 2,
+    })
+    rows = out["rows"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["type"] == "command"
+    assert row["passes"] == 1 and row["n"] == 1
+    assert row["priced"] is True  # measured e2b cost finalized at close()
+    assert fake.instances and all(s.killed for s in fake.instances)
