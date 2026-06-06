@@ -72,5 +72,11 @@ def test_aa_source_raises_optin_error():
 def test_bundled_seed_loads():
     priors = load_priors("seed")
     assert "openai/gpt-5" in priors
+    assert priors["anthropic/claude-opus-4-8"].metrics == []
+    assert priors["gemini/gemini-3.1-pro-preview"].metrics == []
+    assert priors["gemini/gemini-3.5-flash"].metrics == []
+    assert priors["gemini/gemini-3-flash-preview"].metrics == []
+    assert priors["gemini/gemini-3.1-flash-lite"].metrics == []
+    assert "gemini/gemini-3-pro-preview" not in priors
     # local rows ship with no priors on purpose
     assert priors["local/gemma-27b"].metrics == []

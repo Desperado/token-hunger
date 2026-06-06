@@ -62,6 +62,11 @@ anthropic/claude-sonnet-4-6:
       license: n/a
   notes: "ILLUSTRATIVE seed — replace with real, sourced numbers before use"
 
+anthropic/claude-opus-4-8:
+  task_strengths: [general, coding, math]
+  metrics: []
+  notes: "No bundled quality prior; run costbench on your own cases"
+
 anthropic/claude-haiku-4-5:
   task_strengths: [general, coding]
   metrics:
@@ -81,6 +86,26 @@ gemini/gemini-2.5-pro:
       source: "illustrative placeholder — synthetic, not a measured score"
       license: n/a
   notes: "ILLUSTRATIVE seed — replace with real, sourced numbers before use"
+
+gemini/gemini-3.1-pro-preview:
+  task_strengths: [general, coding, math]
+  metrics: []
+  notes: "Preview model; no bundled quality prior, run costbench on your own cases"
+
+gemini/gemini-3.5-flash:
+  task_strengths: [general, coding, math]
+  metrics: []
+  notes: "No bundled quality prior; run costbench on your own cases"
+
+gemini/gemini-3-flash-preview:
+  task_strengths: [general, coding, math]
+  metrics: []
+  notes: "Preview model; no bundled quality prior, run costbench on your own cases"
+
+gemini/gemini-3.1-flash-lite:
+  task_strengths: [general, coding, math]
+  metrics: []
+  notes: "No bundled quality prior; run costbench on your own cases"
 
 mistral/mistral-large-3:
   task_strengths: [general, coding]

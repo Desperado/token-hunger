@@ -63,5 +63,26 @@ def test_bundled_pricing_yaml_loads_with_local_entries():
     prices = _load_yaml_text(text)
     assert isinstance(prices["local/gemma-27b"], AmortizedGpuPrice)
     assert isinstance(prices["mistral/mistral-large-3"], ModelPrice)
+    opus = prices["anthropic/claude-opus-4-8"]
+    assert isinstance(opus, ModelPrice)
+    assert opus.input_per_m == 5.0
+    assert opus.output_per_m == 25.0
+    gemini_pro = prices["gemini/gemini-3.1-pro-preview"]
+    assert isinstance(gemini_pro, ModelPrice)
+    assert gemini_pro.input_per_m == 2.0
+    assert gemini_pro.output_per_m == 12.0
+    gemini_new_flash = prices["gemini/gemini-3.5-flash"]
+    assert isinstance(gemini_new_flash, ModelPrice)
+    assert gemini_new_flash.input_per_m == 1.5
+    assert gemini_new_flash.output_per_m == 9.0
+    gemini_flash = prices["gemini/gemini-3-flash-preview"]
+    assert isinstance(gemini_flash, ModelPrice)
+    assert gemini_flash.input_per_m == 0.5
+    assert gemini_flash.output_per_m == 3.0
+    gemini_flash_lite = prices["gemini/gemini-3.1-flash-lite"]
+    assert isinstance(gemini_flash_lite, ModelPrice)
+    assert gemini_flash_lite.input_per_m == 0.25
+    assert gemini_flash_lite.output_per_m == 1.5
+    assert "gemini/gemini-3-pro-preview" not in prices
     # whole table fingerprints without error (covers mixed-basis canonicalization)
     PricingTable(prices)
