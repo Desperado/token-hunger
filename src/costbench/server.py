@@ -21,7 +21,9 @@ targets, and cases. ``run`` needs provider API keys in the environment just like
 
 from __future__ import annotations
 
+import base64
 import json
+import hmac
 import ipaddress
 import os
 import re
@@ -683,6 +685,34 @@ class _Handler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def _authorized(self) -> bool:
+        """Optional HTTP Basic Auth gate for hosted deploys.
+
+        Off unless ``COSTBENCH_BASIC_AUTH`` ("user:password") is set, so local
+        ``serve`` is unaffected. When set, every request must carry a matching
+        ``Authorization: Basic`` header.
+        """
+        expected = os.environ.get("COSTBENCH_BASIC_AUTH", "").strip()
+        if not expected:
+            return True
+        header = self.headers.get("Authorization", "")
+        scheme, _, token = header.partition(" ")
+        if scheme.lower() == "basic" and token:
+            try:
+                supplied = base64.b64decode(token).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                supplied = ""
+            if hmac.compare_digest(supplied, expected):
+                return True
+        body = b'{"error": "authentication required"}'
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="costbench"')
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return False
+
     def _read_json_body(self, path: str) -> dict | None:
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         if content_type != "application/json":
@@ -710,6 +740,8 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if not self._request_is_local():
             return
+        if not self._authorized():
+            return
         path = self.path.split("?", 1)[0]
         if path == "/api/bootstrap":
             try:
@@ -722,6 +754,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if not self._request_is_local():
+            return
+        if not self._authorized():
             return
         path = self.path.split("?", 1)[0]
         if path == "/api/run-stream":
