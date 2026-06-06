@@ -55,6 +55,28 @@ def test_model_target_uses_separate_execution_model(monkeypatch):
     ModelTarget(spec, pricing).run(TaskSpec(), "hello")
 
     assert calls[0]["model"] == "ollama/gemma3:27b"
+    assert calls[0]["max_retries"] == 0
+
+
+def test_model_target_preserves_explicit_retry_setting(monkeypatch):
+    calls = []
+    fake_litellm = SimpleNamespace(
+        completion=lambda **kwargs: calls.append(kwargs) or _response()
+    )
+    monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
+    spec = TargetSpec(
+        type="model",
+        id="anthropic/claude-haiku-4-5",
+        raw={
+            "type": "model",
+            "id": "anthropic/claude-haiku-4-5",
+            "params": {"max_retries": 2},
+        },
+    )
+
+    ModelTarget(spec, PricingTable({})).run(TaskSpec(), "hello")
+
+    assert calls[0]["max_retries"] == 2
 
 
 def test_model_target_applies_infra_override_and_gpu_basis(monkeypatch):
