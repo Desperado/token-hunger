@@ -100,6 +100,8 @@ requirements before choosing a target.
 Requires Python 3.10 or newer.
 
 ```bash
+git clone https://github.com/Desperado/token-hunger.git
+cd token-hunger
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -108,6 +110,17 @@ costbench run examples/offline/demo.yaml
 
 The offline demo uses two local classifiers, needs no API keys, and completes
 the full benchmark flow.
+
+Launch the local web UI:
+
+```bash
+costbench serve
+```
+
+This opens `http://127.0.0.1:8765/`. Loading the UI and generating estimates
+need no provider keys. To execute benchmarks against hosted models, install
+model support with `pip install -e ".[models]"` and put the provider keys those
+models require in a gitignored `.env`.
 
 Generate a shareable report:
 
