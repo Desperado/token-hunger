@@ -207,7 +207,13 @@ class CommandTarget(Target):
     """A local command/script: input on stdin, output on stdout.
 
     Lets you benchmark a homegrown pipeline with no HTTP layer. Cost is whatever
-    you declare (often 'unknown' for local infra)."""
+    you declare (often 'unknown' for local infra).
+
+    The command comes from the user's local benchmark config and is intentionally
+    executable. A string uses ``/bin/sh -c`` to support pipelines/redirection;
+    use the list form for direct ``shell=False`` execution. Never run an
+    untrusted config locally; use ``sandbox: e2b`` for untrusted code.
+    """
 
     def __init__(self, spec: TargetSpec):
         self.spec = spec

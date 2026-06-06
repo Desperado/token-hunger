@@ -5,6 +5,7 @@ keys, so it is not exercised here; its shaping is covered by the runner tests.
 """
 
 from costbench import server
+import pytest
 
 
 def test_vendor_inference():
@@ -98,3 +99,54 @@ def test_stream_run_emits_start_progress_and_result(monkeypatch):
     assert events[2]["passes"] == 1
     assert events[2]["errors"] == 1
     assert events[2]["percent"] == 100.0
+
+
+def test_server_refuses_non_loopback_bind():
+    assert server._is_loopback_host("127.0.0.1")
+    assert server._is_loopback_host("::1")
+    assert server._is_loopback_host("localhost")
+    assert not server._is_loopback_host("0.0.0.0")
+    with pytest.raises(ValueError, match="local-only"):
+        server.serve(host="0.0.0.0", port=0, open_browser=False)
+    assert server._is_local_http_authority("127.0.0.1:8765")
+    assert server._is_local_http_authority("[::1]:8765")
+    assert server._is_local_http_authority("localhost:8765")
+    assert not server._is_local_http_authority("attacker.example:8765")
+    assert server._is_allowed_origin("http://127.0.0.1:8765")
+    assert not server._is_allowed_origin("https://attacker.example")
+
+
+def test_request_validation_rejects_bad_shapes_and_limits():
+    valid = {
+        "task": {"system": "Answer.", "promptTemplate": "{input}", "check": "exact"},
+        "targets": ["example/model"],
+        "cases": [{"input": "question", "expect": "answer"}],
+    }
+    assert server.validate_request("/api/run", valid) is valid
+
+    with pytest.raises(ValueError, match="JSON object"):
+        server.validate_request("/api/run", [])
+    with pytest.raises(ValueError, match="non-empty"):
+        server.validate_request("/api/run", {**valid, "targets": []})
+    with pytest.raises(ValueError, match="between 1 and 32"):
+        server.validate_request("/api/run", {**valid, "concurrency": 100})
+    with pytest.raises(ValueError, match="must be a scalar"):
+        server.validate_request(
+            "/api/run",
+            {**valid, "cases": [{"input": "q", "expect": {"nested": True}}]},
+        )
+    with pytest.raises(ValueError, match="target/case calls"):
+        server.validate_request(
+            "/api/run",
+            {
+                **valid,
+                "targets": [f"model/{i}" for i in range(11)],
+                "cases": [{"input": "q", "expect": "a"}] * 1000,
+            },
+        )
+
+
+def test_static_path_containment_guard_logic():
+    root = server.UI_DIR.resolve()
+    assert root in (root / "styles.css").resolve().parents
+    assert root not in (root / "../pricing.yaml").resolve().parents

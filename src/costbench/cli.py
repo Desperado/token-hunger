@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import stat
 import sys
 from importlib import resources
 from pathlib import Path
@@ -37,6 +38,15 @@ def _load_dotenv(path: str | Path = ".env") -> int:
     p = Path(path)
     if not p.is_file():
         return 0
+    try:
+        mode = stat.S_IMODE(p.stat().st_mode)
+        if mode & (stat.S_IRWXG | stat.S_IRWXO):
+            console.print(
+                f"[yellow]warning:[/yellow] {p} permissions are {mode:04o}; "
+                f"secrets may be readable by other users. Run `chmod 600 {p}`."
+            )
+    except OSError:
+        pass  # The subsequent read reports a useful error if access is broken.
     loaded = 0
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()

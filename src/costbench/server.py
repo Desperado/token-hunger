@@ -22,14 +22,22 @@ targets, and cases. ``run`` needs provider API keys in the environment just like
 from __future__ import annotations
 
 import json
+import ipaddress
 import re
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
+MAX_BODY_BYTES = 2 * 1024 * 1024
+MAX_TARGETS = 100
+MAX_CASES = 1000
+MAX_RUNS = 10_000
+MAX_TEXT_LENGTH = 100_000
 
 # Map a litellm-style provider prefix to the vendor label the UI styles by.
 _VENDOR_BY_PREFIX = {
@@ -63,6 +71,114 @@ def vendor_of(model_id: str) -> str:
 
 def _norm(text: Any) -> str:
     return re.sub(r"\s+", " ", str(text).strip().lower())
+
+
+def _validate_text(value: Any, field: str, *, allow_none: bool = False) -> None:
+    if value is None and allow_none:
+        return
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string")
+    if len(value) > MAX_TEXT_LENGTH:
+        raise ValueError(f"{field} is too long")
+
+
+def _validate_run_body(body: Any, *, allow_empty: bool = False) -> dict:
+    if not isinstance(body, dict):
+        raise ValueError("request body must be a JSON object")
+    task = body.get("task")
+    if not isinstance(task, dict):
+        raise ValueError("task must be an object")
+    _validate_text(task.get("system"), "task.system", allow_none=True)
+    _validate_text(task.get("promptTemplate", "{input}"), "task.promptTemplate")
+    check = task.get("check", "exact")
+    if not isinstance(check, (str, dict)):
+        raise ValueError("task.check must be a string or object")
+
+    targets = body.get("targets")
+    cases = body.get("cases")
+    if not isinstance(targets, list) or (not targets and not allow_empty):
+        raise ValueError("targets must be a non-empty array")
+    if len(targets) > MAX_TARGETS or not all(isinstance(t, str) and t for t in targets):
+        raise ValueError(f"targets must contain 1-{MAX_TARGETS} model ids")
+    if not isinstance(cases, list) or (not cases and not allow_empty):
+        raise ValueError("cases must be a non-empty array")
+    if len(cases) > MAX_CASES:
+        raise ValueError(f"cases cannot exceed {MAX_CASES}")
+    for i, case in enumerate(cases):
+        if not isinstance(case, dict) or "input" not in case or "expect" not in case:
+            raise ValueError(f"cases[{i}] must contain input and expect")
+        _validate_text(case["input"], f"cases[{i}].input")
+        if isinstance(case["expect"], (dict, list)):
+            raise ValueError(f"cases[{i}].expect must be a scalar")
+    if len(targets) * len(cases) > MAX_RUNS:
+        raise ValueError(f"a request cannot exceed {MAX_RUNS} target/case calls")
+
+    if "concurrency" in body:
+        concurrency = body["concurrency"]
+        if not isinstance(concurrency, int) or isinstance(concurrency, bool):
+            raise ValueError("concurrency must be an integer")
+        if not 1 <= concurrency <= 32:
+            raise ValueError("concurrency must be between 1 and 32")
+    if "outputTokens" in body:
+        output_tokens = body["outputTokens"]
+        if not isinstance(output_tokens, int) or isinstance(output_tokens, bool):
+            raise ValueError("outputTokens must be an integer")
+        if not 1 <= output_tokens <= 1_000_000:
+            raise ValueError("outputTokens must be between 1 and 1000000")
+    return body
+
+
+def _validate_suggest_body(body: Any) -> dict:
+    if not isinstance(body, dict):
+        raise ValueError("request body must be a JSON object")
+    task = body.get("task")
+    if not isinstance(task, dict):
+        raise ValueError("task must be an object")
+    _validate_text(task.get("system"), "task.system", allow_none=True)
+    _validate_text(task.get("promptTemplate", "{input}"), "task.promptTemplate")
+    n = body.get("n", 10)
+    if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= 24:
+        raise ValueError("n must be an integer between 1 and 24")
+    if body.get("model") is not None:
+        _validate_text(body["model"], "model")
+    return body
+
+
+def validate_request(path: str, body: Any) -> dict:
+    if path in ("/api/estimate", "/api/run", "/api/run-stream"):
+        return _validate_run_body(body)
+    if path == "/api/suggest-cases":
+        return _validate_suggest_body(body)
+    raise ValueError("unsupported endpoint")
+
+
+def _is_loopback_host(host: str) -> bool:
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_local_http_authority(value: str) -> bool:
+    try:
+        hostname = urlsplit("//" + value).hostname
+    except ValueError:
+        return False
+    return bool(hostname and _is_loopback_host(hostname))
+
+
+def _is_allowed_origin(value: str | None) -> bool:
+    if value is None:
+        return True
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return False
+    return parsed.scheme in ("http", "https") and bool(
+        parsed.hostname and _is_loopback_host(parsed.hostname)
+    )
 
 
 def _build_cfg(task: dict, target_ids: list[str], cases: list[dict]):
@@ -389,17 +505,56 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _request_is_local(self) -> bool:
+        host = self.headers.get("Host", "")
+        if not _is_local_http_authority(host):
+            self._send_json({"error": "forbidden host"}, 403)
+            return False
+        if not _is_allowed_origin(self.headers.get("Origin")):
+            self._send_json({"error": "forbidden origin"}, 403)
+            return False
+        return True
+
+    def _read_json_body(self, path: str) -> dict | None:
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            self._send_json({"error": "Content-Type must be application/json"}, 415)
+            return None
+        raw_length = self.headers.get("Content-Length", "0")
+        try:
+            length = int(raw_length)
+        except ValueError:
+            self._send_json({"error": "invalid Content-Length"}, 400)
+            return None
+        if length < 0 or length > MAX_BODY_BYTES:
+            self._send_json({"error": "request body too large"}, 413)
+            return None
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            body = json.loads(raw or b"{}")
+            return validate_request(path, body)
+        except json.JSONDecodeError:
+            self._send_json({"error": "invalid JSON"}, 400)
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, 400)
+        return None
+
     def do_GET(self) -> None:
+        if not self._request_is_local():
+            return
         path = self.path.split("?", 1)[0]
         if path == "/api/bootstrap":
             try:
                 self._send_json(bootstrap_payload())
             except Exception as exc:  # noqa: BLE001
-                self._send_json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+                print(f"costbench server error: {type(exc).__name__}: {exc}", file=sys.stderr)
+                self._send_json({"error": "internal server error"}, 500)
             return
         self._serve_static(path)
 
     def do_POST(self) -> None:
+        if not self._request_is_local():
+            return
         path = self.path.split("?", 1)[0]
         if path == "/api/run-stream":
             self._handle_run_stream()
@@ -408,27 +563,20 @@ class _Handler(BaseHTTPRequestHandler):
         if handler is None:
             self._send_json({"error": "not found"}, 404)
             return
-        length = int(self.headers.get("Content-Length", 0) or 0)
-        raw = self.rfile.read(length) if length else b"{}"
-        try:
-            body = json.loads(raw or b"{}")
-        except json.JSONDecodeError as exc:
-            self._send_json({"error": f"invalid JSON: {exc}"}, 400)
+        body = self._read_json_body(path)
+        if body is None:
             return
         try:
             self._send_json(handler(body))
         except ValueError as exc:
             self._send_json({"error": str(exc)}, 400)
-        except Exception as exc:  # noqa: BLE001 — surface, don't crash the server
-            self._send_json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+        except Exception as exc:  # noqa: BLE001 — log details server-side only
+            print(f"costbench server error: {type(exc).__name__}: {exc}", file=sys.stderr)
+            self._send_json({"error": "internal server error"}, 500)
 
     def _handle_run_stream(self) -> None:
-        length = int(self.headers.get("Content-Length", 0) or 0)
-        raw = self.rfile.read(length) if length else b"{}"
-        try:
-            body = json.loads(raw or b"{}")
-        except json.JSONDecodeError as exc:
-            self._send_json({"error": f"invalid JSON: {exc}"}, 400)
+        body = self._read_json_body("/api/run-stream")
+        if body is None:
             return
 
         self.send_response(200)
@@ -445,8 +593,9 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             stream_run_payload(body, emit)
         except Exception as exc:  # noqa: BLE001 — errors belong in the stream
+            print(f"costbench server error: {type(exc).__name__}: {exc}", file=sys.stderr)
             try:
-                emit({"type": "error", "error": f"{type(exc).__name__}: {exc}"})
+                emit({"type": "error", "error": "internal server error"})
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
@@ -469,9 +618,17 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def serve(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) -> None:
-    """Start the UI server (blocking)."""
+    """Start the loopback-only UI server (blocking).
+
+    The API can spend provider credits using keys loaded into this process, so
+    it is deliberately not an unauthenticated network service.
+    """
     if not UI_DIR.is_dir():
         raise RuntimeError(f"UI assets not found at {UI_DIR}")
+    if not _is_loopback_host(host):
+        raise ValueError(
+            "costbench serve is local-only; bind to 127.0.0.1, ::1, or localhost"
+        )
     httpd = ThreadingHTTPServer((host, port), _Handler)
     url = f"http://{host}:{port}/"
     print(f"costbench UI → {url}  (Ctrl-C to stop)")
