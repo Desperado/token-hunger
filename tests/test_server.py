@@ -164,6 +164,18 @@ def test_server_refuses_non_loopback_bind():
     assert not server._is_allowed_origin("https://attacker.example")
 
 
+def test_public_host_relaxes_guards_for_hosted_deploy(monkeypatch):
+    # Without COSTBENCH_PUBLIC_HOST the loopback-only guards stand.
+    monkeypatch.delenv("COSTBENCH_PUBLIC_HOST", raising=False)
+    assert not server._is_allowed_origin("https://costbench.up.railway.app")
+
+    # With it set, that exact host is allowed (bind + origin), others still rejected.
+    monkeypatch.setenv("COSTBENCH_PUBLIC_HOST", "costbench.up.railway.app")
+    assert server._is_allowed_origin("https://costbench.up.railway.app")
+    assert not server._is_allowed_origin("https://attacker.example")
+    assert server._is_loopback_host("127.0.0.1")  # loopback still allowed too
+
+
 def test_request_validation_rejects_bad_shapes_and_limits():
     valid = {
         "task": {"system": "Answer.", "promptTemplate": "{input}", "check": "exact"},

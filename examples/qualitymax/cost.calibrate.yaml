@@ -16,6 +16,9 @@ target_map:
   claude-haiku-4-5: anthropic/claude-haiku-4-5
   claude-haiku-4-5-20251001: anthropic/claude-haiku-4-5
   gpt-5-mini: openai/gpt-5-mini
+  # QualityMax PR #874 swapped the crawl cheap-tier default to Gemini flash-lite;
+  # map it so post-swap cost rows are attributed instead of skipped.
+  gemini-3.1-flash-lite: gemini/gemini-3.1-flash-lite
 
 fields:
   id: id

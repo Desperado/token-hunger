@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import ipaddress
+import os
 import re
 import sys
 import threading
@@ -242,6 +243,20 @@ def _is_loopback_host(host: str) -> bool:
         return False
 
 
+def _public_host() -> str | None:
+    """Public hostname this instance may be reached at when hosted behind a
+    front door (e.g. Railway). Set ``COSTBENCH_PUBLIC_HOST`` to the deployed
+    domain to relax the otherwise loopback-only guards in ``serve`` and
+    ``_is_allowed_origin``.
+
+    SAFETY: the run API can spend provider credits using keys in this process,
+    so a hosted instance MUST run WITHOUT provider API keys (offline/estimate
+    demo) or behind authentication. See examples/deploy/README.md.
+    """
+    h = os.environ.get("COSTBENCH_PUBLIC_HOST", "").strip().lower()
+    return h or None
+
+
 def _is_local_http_authority(value: str) -> bool:
     try:
         hostname = urlsplit("//" + value).hostname
@@ -257,9 +272,10 @@ def _is_allowed_origin(value: str | None) -> bool:
         parsed = urlsplit(value)
     except ValueError:
         return False
-    return parsed.scheme in ("http", "https") and bool(
-        parsed.hostname and _is_loopback_host(parsed.hostname)
-    )
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    host = parsed.hostname.lower()
+    return _is_loopback_host(host) or host == _public_host()
 
 
 def _sandbox_target(sandbox: dict) -> dict:
@@ -775,9 +791,10 @@ def serve(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) 
     """
     if not UI_DIR.is_dir():
         raise RuntimeError(f"UI assets not found at {UI_DIR}")
-    if not _is_loopback_host(host):
+    if not _is_loopback_host(host) and not _public_host():
         raise ValueError(
-            "costbench serve is local-only; bind to 127.0.0.1, ::1, or localhost"
+            "costbench serve is local-only; bind to 127.0.0.1, ::1, or localhost "
+            "(set COSTBENCH_PUBLIC_HOST=<domain> to allow a hosted, keyless deploy)"
         )
     httpd = ThreadingHTTPServer((host, port), _Handler)
     url = f"http://{host}:{port}/"
