@@ -25,6 +25,9 @@ A benchmark contains:
 Every target receives the same cases. Results should only be compared when
 inputs, correctness criteria, and relevant runtime conditions are equivalent.
 The configuration fingerprint identifies the exact YAML used for a run.
+When `--max-cases` truncates the case set, costbench derives a separate
+fingerprint for that subset. This prevents partial smoke-test observations from
+being treated as calibration data for the complete benchmark.
 
 ## Correctness
 
@@ -56,6 +59,11 @@ request cost =
 Prices come from the versioned `pricing.yaml` table or explicit configuration
 overrides. Each built-in entry includes a verification date and source.
 
+For self-hosted model entries, cost is derived from total observed tokens,
+declared GPU hourly cost, and serving throughput. Per-target infrastructure
+overrides apply to both estimates and measured run reports. This basis remains
+labeled as amortized GPU cost rather than vendor token pricing.
+
 Current limitations:
 
 - cache writes, cache reads, batch discounts, priority tiers, regional
@@ -81,6 +89,32 @@ monthly price and assumed volume, with the report.
 Known declared cost is counted for failed attempts once execution was
 attempted. Preflight failures such as a missing API key are not assigned a
 request cost.
+
+## Pre-Run Estimates
+
+`costbench estimate` does not execute targets. For model targets, it estimates
+the input request by counting message content, conservative chat framing, and
+configured tool/function/response schemas. Provider chat serialization and
+billing rules vary, so these counts are estimates even when a provider
+tokenizer is available.
+
+Tokenizer assets are never downloaded by the estimator. An unavailable or
+uncached tokenizer falls back to a padded local heuristic.
+
+The output side uses one of:
+
+1. a positive explicit output-token limit;
+2. a positive model limit from the bundled limits table;
+3. a conservative default;
+4. calibrated p50-p90 output usage when at least five matching local
+   observations exist.
+
+Estimate amounts round upward. They are labeled `estimated (...)` and must not
+be presented as billed costs.
+
+Local calibration observations are selected by configuration fingerprint and
+target ID. They are useful for repeated local workloads, but they are not a
+substitute for production traffic measurement.
 
 ## Latency
 

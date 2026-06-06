@@ -212,8 +212,9 @@ def write_report(report: BenchmarkReport, fmt: str, path: str) -> None:
 # --- estimate rendering ------------------------------------------------------
 
 ESTIMATE_FOOTER = (
-    "Estimates only — NOT verified costs. Input cost is computed from a real "
-    "token count; output cost is a worst-case ceiling from max_output_tokens "
+    "Estimates only — NOT verified costs. Input cost is computed from a "
+    "request-aware token estimate; output cost is a worst-case ceiling from "
+    "max_output_tokens "
     "(or a calibrated p50–p90 range when run history exists). Estimates round "
     "UP. Run `costbench run <config>` for actual billed cost."
 )
@@ -241,7 +242,7 @@ def render_estimate_terminal(estimates, console=None, config_fp="", pricing_fp="
     table.add_column("Target", style="bold")
     table.add_column("Type")
     table.add_column("Cost basis")
-    table.add_column("Input cost (exact)", justify="right")
+    table.add_column("Input cost (tokenized)", justify="right")
     table.add_column("Output cost (range)", justify="right")
     table.add_column("Est. cost/case (range)", justify="right", style="bold cyan")
 
@@ -314,11 +315,12 @@ def estimate_to_markdown(estimates, name, config_fp, pricing_fp) -> str:
     lines = [
         f"# costbench estimate — {name}",
         "",
-        "**Estimates, not verified costs.** Input cost is computed from a real "
-        "token count; output cost is a worst-case ceiling (or a calibrated "
-        "p50–p90 range when run history exists). Estimates round UP.",
+        "**Estimates, not verified costs.** Input cost is computed from a "
+        "request-aware token estimate; output cost is a worst-case ceiling "
+        "(or a calibrated p50–p90 range when run history exists). Estimates "
+        "round UP.",
         "",
-        "| Target | Type | Cost basis | Input cost (exact) | Output cost (range) | Est. cost/case (range) |",
+        "| Target | Type | Cost basis | Input cost (tokenized) | Output cost (range) | Est. cost/case (range) |",
         "| --- | --- | --- | ---: | ---: | ---: |",
     ]
     for e in estimates:
