@@ -262,7 +262,9 @@ def _is_local_http_authority(value: str) -> bool:
         hostname = urlsplit("//" + value).hostname
     except ValueError:
         return False
-    return bool(hostname and _is_loopback_host(hostname))
+    if not hostname:
+        return False
+    return _is_loopback_host(hostname) or hostname.lower() == _public_host()
 
 
 def _is_allowed_origin(value: str | None) -> bool:

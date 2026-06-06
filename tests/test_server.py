@@ -174,6 +174,10 @@ def test_public_host_relaxes_guards_for_hosted_deploy(monkeypatch):
     assert server._is_allowed_origin("https://costbench.up.railway.app")
     assert not server._is_allowed_origin("https://attacker.example")
     assert server._is_loopback_host("127.0.0.1")  # loopback still allowed too
+    # Host-header guard relaxes for the same public host.
+    assert server._is_local_http_authority("costbench.up.railway.app")
+    assert server._is_local_http_authority("127.0.0.1:8765")
+    assert not server._is_local_http_authority("attacker.example")
 
 
 def test_request_validation_rejects_bad_shapes_and_limits():
