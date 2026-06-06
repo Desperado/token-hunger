@@ -128,6 +128,17 @@ output. When a system prompt exists, the command receives a JSON object with
 Command targets and custom code checks execute trusted local code. Benchmark
 configurations from untrusted sources must not be run.
 
+A command target may instead run inside an e2b cloud sandbox by setting
+`sandbox: e2b` (requires the `e2b` extra and `E2B_API_KEY`). The stdin/stdout
+contract is unchanged, but the code runs off the local machine — suitable for
+untrusted or external pipelines — and the cost basis becomes *measured* from
+billed sandbox seconds. A combined CPU + RAM rate must be declared with
+`cost.basis: per_second` and `cost.per_second: <rate>`; there is no fallback
+because E2B resource prices and template sizes vary. An optional
+`sandbox_template` selects an e2b template. Sandbox creation is paced at one
+per second for Hobby accounts; higher tiers may lower
+`sandbox_create_interval`. See `examples/sandbox/e2b.yaml`.
+
 ## Correctness Checks
 
 Implemented checks are:

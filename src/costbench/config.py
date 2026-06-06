@@ -8,6 +8,7 @@ target or a competitor is editing YAML, not writing code.
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -19,14 +20,19 @@ import yaml
 class CostSpec:
     """How to cost a non-model target whose tokens we can't see.
 
-    basis is one of: 'per_request', 'subscription', 'unknown'.
+    basis is one of: 'per_request', 'subscription', 'per_second', 'unknown'.
     We never silently blend these with per-token costs in one number.
+
+    'per_second' is the sandbox basis: cost is *measured* from runtime, so
+    :meth:`amortized_per_request` can't know it up front and the executing
+    target multiplies the rate by observed seconds via :meth:`cost_for_seconds`.
     """
 
     basis: str = "unknown"
     per_request: Optional[float] = None
     monthly: Optional[float] = None
     expected_monthly_volume: Optional[int] = None
+    per_second: Optional[float] = None
     note: Optional[str] = None
 
     def amortized_per_request(self) -> Optional[float]:
@@ -40,11 +46,18 @@ class CostSpec:
             return self.monthly / self.expected_monthly_volume
         return None
 
+    def cost_for_seconds(self, seconds: float) -> Optional[float]:
+        """Measured cost for a runtime-billed target (e.g. an e2b sandbox)."""
+        if self.basis == "per_second" and self.per_second is not None:
+            return self.per_second * seconds
+        return None
+
     @property
     def label(self) -> str:
         return {
             "per_request": "per-request",
             "subscription": "subscription-amortized",
+            "per_second": "measured-runtime-seconds",
             "unknown": "unknown",
         }.get(self.basis, self.basis)
 
@@ -127,14 +140,17 @@ def _parse_cost(raw: Optional[dict]) -> CostSpec:
                 if raw.get("expected_monthly_volume") is not None
                 else None
             ),
+            per_second=(
+                float(raw["per_second"]) if raw.get("per_second") is not None else None
+            ),
             note=raw.get("note"),
         )
     except (TypeError, ValueError) as exc:
         raise ValueError(f"invalid numeric value in target cost: {raw!r}") from exc
-    if cost.basis not in ("per_request", "subscription", "unknown"):
+    if cost.basis not in ("per_request", "subscription", "per_second", "unknown"):
         raise ValueError(
             f"unknown cost basis {cost.basis!r}; "
-            "use per_request, subscription, or unknown"
+            "use per_request, subscription, per_second, or unknown"
         )
     if cost.basis == "per_request":
         if cost.per_request is None or cost.per_request < 0:
@@ -146,6 +162,9 @@ def _parse_cost(raw: Optional[dict]) -> CostSpec:
             raise ValueError(
                 "subscription cost needs a positive 'expected_monthly_volume'"
             )
+    if cost.basis == "per_second":
+        if cost.per_second is None or cost.per_second < 0:
+            raise ValueError("per_second cost needs a non-negative 'per_second'")
     return cost
 
 
@@ -166,11 +185,40 @@ def _parse_target(raw: dict) -> TargetSpec:
         raise ValueError(f"endpoint target missing 'url': {raw!r}")
     if ttype == "command" and not raw.get("command"):
         raise ValueError(f"command target missing 'command': {raw!r}")
+    cost = _parse_cost(raw.get("cost"))
+    sandbox = raw.get("sandbox")
+    if sandbox is not None:
+        if ttype != "command":
+            raise ValueError(f"'sandbox' only applies to command targets: {raw!r}")
+        if sandbox not in ("local", "e2b"):
+            raise ValueError(
+                f"unknown sandbox {sandbox!r}; use local or e2b"
+            )
+    if sandbox == "e2b":
+        if cost.basis != "per_second" or cost.per_second is None:
+            raise ValueError(
+                "e2b command targets require "
+                "cost: {basis: per_second, per_second: <combined rate>}"
+            )
+        try:
+            create_interval = float(raw.get("sandbox_create_interval", 1.0))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "sandbox_create_interval must be a non-negative number"
+            ) from exc
+        if not math.isfinite(create_interval) or create_interval < 0:
+            raise ValueError(
+                "sandbox_create_interval must be a finite non-negative number"
+            )
+    elif cost.basis == "per_second":
+        raise ValueError(
+            "per_second cost only applies to command targets with sandbox: e2b"
+        )
     return TargetSpec(
         type=ttype,
         id=str(tid) if not isinstance(tid, str) else tid,
         raw=raw,
-        cost=_parse_cost(raw.get("cost")),
+        cost=cost,
         infra_cost=_parse_infra_cost(raw.get("infra_cost")),
     )
 
