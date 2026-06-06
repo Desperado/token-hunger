@@ -202,3 +202,94 @@ cases:
     config = load_config(path)
 
     assert config.targets[0].raw["sandbox_pool_size"] == 10
+
+
+@pytest.mark.parametrize("timeout", [0, -5, 3601, 1.5, "true"])
+def test_e2b_target_rejects_invalid_timeout(tmp_path, timeout):
+    path = write_config(
+        tmp_path,
+        f"""
+targets:
+  - type: command
+    id: sandboxed
+    command: ["cat"]
+    sandbox: e2b
+    timeout: {timeout}
+    cost:
+      basis: per_second
+      per_second: 0.001
+cases:
+  - input: hello
+    expect: hello
+""",
+    )
+
+    with pytest.raises(ValueError, match="sandbox timeout"):
+        load_config(path)
+
+
+def _e2b_code_check_config(tmp_path, *, allow=False, per_case=False):
+    grader = tmp_path / "grade.py"
+    grader.write_text("def grade(out, expect):\n    return True\n", encoding="utf-8")
+    check_block = "" if per_case else "check:\n  type: code\n  function: grade.py:grade\n"
+    case_check = (
+        "    check:\n      type: code\n      function: grade.py:grade\n"
+        if per_case
+        else ""
+    )
+    allow_line = "allow_local_code_checks: true\n" if allow else ""
+    return write_config(
+        tmp_path,
+        f"""
+{allow_line}{check_block}targets:
+  - type: command
+    id: sandboxed
+    command: ["cat"]
+    sandbox: e2b
+    cost:
+      basis: per_second
+      per_second: 0.001
+cases:
+  - input: hello
+    expect: hello
+{case_check}""",
+    )
+
+
+@pytest.mark.parametrize("per_case", [False, True])
+def test_e2b_rejects_local_code_check(tmp_path, per_case):
+    path = _e2b_code_check_config(tmp_path, per_case=per_case)
+    with pytest.raises(ValueError, match="bypasses the e2b sandbox"):
+        load_config(path)
+
+
+def test_e2b_allows_code_check_with_explicit_opt_in(tmp_path):
+    path = _e2b_code_check_config(tmp_path, allow=True)
+    config = load_config(path)
+    assert config.targets[0].raw["sandbox"] == "e2b"
+
+
+def test_local_command_still_allows_code_check(tmp_path):
+    grader = tmp_path / "grade.py"
+    grader.write_text("def grade(out, expect):\n    return True\n", encoding="utf-8")
+    path = write_config(
+        tmp_path,
+        """
+check:
+  type: code
+  function: grade.py:grade
+targets:
+  - type: command
+    id: local
+    command: ["cat"]
+    cost:
+      basis: per_request
+      per_request: 0.01
+cases:
+  - input: hello
+    expect: hello
+""",
+    )
+
+    config = load_config(path)
+    assert config.check["type"] == "code"

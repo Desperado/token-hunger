@@ -17,6 +17,11 @@ from typing import Any, Optional
 import yaml
 
 MAX_E2B_SANDBOXES = 10
+# Upper bound on an e2b command's per-call timeout. The sandbox bounds the
+# blast radius of untrusted code but not the *spend* — an unbounded timeout on a
+# hanging command bills sandbox-seconds against your E2B key, multiplied by the
+# pool. Cap per-call wall-clock so a config can't turn into a billing DoS.
+MAX_E2B_TIMEOUT = 3600
 
 
 @dataclass
@@ -57,10 +62,14 @@ class CostSpec:
 
     @property
     def label(self) -> str:
+        # "e2b-seconds × declared-rate", not "measured": only the *seconds* are
+        # observed; the per-second rate is a user-declared number that must
+        # already fold in the sandbox's vCPU+RAM tier. Don't let the label imply
+        # the dollars came back from e2b's meter.
         return {
             "per_request": "per-request",
             "subscription": "subscription-amortized",
-            "per_second": "measured-runtime-seconds",
+            "per_second": "e2b-seconds × declared-rate",
             "unknown": "unknown",
         }.get(self.basis, self.basis)
 
@@ -76,6 +85,11 @@ class CostSpec:
             return (
                 f"${self.monthly:g}/month over "
                 f"{self.expected_monthly_volume:,} expected requests"
+            )
+        if self.basis == "per_second" and self.per_second is not None:
+            return (
+                f"${self.per_second:g}/sandbox-second (declared rate — verify it "
+                "matches your template's combined vCPU + RAM price)"
             )
         return None
 
@@ -223,6 +237,16 @@ def _parse_target(raw: dict) -> TargetSpec:
                 f"sandbox_pool_size must be an integer between "
                 f"1 and {MAX_E2B_SANDBOXES}"
             )
+        timeout = raw.get("timeout", 120)
+        if (
+            not isinstance(timeout, int)
+            or isinstance(timeout, bool)
+            or not 1 <= timeout <= MAX_E2B_TIMEOUT
+        ):
+            raise ValueError(
+                f"sandbox timeout must be an integer between "
+                f"1 and {MAX_E2B_TIMEOUT} seconds"
+            )
     elif cost.basis == "per_second":
         raise ValueError(
             "per_second cost only applies to command targets with sandbox: e2b"
@@ -312,17 +336,54 @@ def build_config(
         else f"{fingerprint_text}\ncases-content:{content_key}"
     )
 
+    targets = [_parse_target(t) for t in raw["targets"]]
+    default_check = raw.get("check", "exact")
+    _reject_local_code_under_sandbox(
+        targets, default_check, cases, raw.get("allow_local_code_checks", False)
+    )
+
     return Config(
         name=raw.get("name", default_name),
-        targets=[_parse_target(t) for t in raw["targets"]],
+        targets=targets,
         task=task,
-        check=raw.get("check", "exact"),
+        check=default_check,
         cases=cases,
         pricing_overrides=raw.get("pricing", {}) or {},
         pricing_path=raw.get("pricing_path"),
         source_path=source_path,
         fingerprint=hashlib.sha256(fp_material.encode("utf-8")).hexdigest()[:12],
     )
+
+
+def _is_code_check(spec: Any) -> bool:
+    """True if a check spec runs arbitrary local Python (a `code` check)."""
+    return isinstance(spec, dict) and spec.get("type") == "code"
+
+
+def _reject_local_code_under_sandbox(
+    targets: list[TargetSpec],
+    default_check: Any,
+    cases: list[Case],
+    allow_local_code_checks: bool,
+) -> None:
+    """Refuse `code` checks when any target opted into an e2b sandbox.
+
+    A `code` check is loaded via ``exec_module`` and runs on the *host* with full
+    local privileges, so it bypasses the very isolation a ``sandbox: e2b`` target
+    asked for — one untrusted config could own the machine through the grader. We
+    block the combination unless the config explicitly accepts running local
+    check code with ``allow_local_code_checks: true``.
+    """
+    if allow_local_code_checks:
+        return
+    if not any(t.raw.get("sandbox") == "e2b" for t in targets):
+        return
+    if _is_code_check(default_check) or any(_is_code_check(c.check) for c in cases):
+        raise ValueError(
+            "a 'code' check runs on the host and bypasses the e2b sandbox; "
+            "remove it, use a deterministic check (exact/contains/regex/numeric), "
+            "or set 'allow_local_code_checks: true' if you trust the check code"
+        )
 
 
 def load_config(path: str | Path) -> Config:

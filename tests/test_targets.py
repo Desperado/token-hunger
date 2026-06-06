@@ -9,9 +9,11 @@ import pytest
 from costbench.config import CostSpec, InfraCost, TargetSpec, TaskSpec
 from costbench.pricing import AmortizedGpuPrice, PricingTable
 from costbench.targets import (
+    CaseOutput,
     CommandTarget,
     E2BCommandTarget,
     ModelTarget,
+    _E2BSandboxSlot,
     build_target,
 )
 
@@ -158,17 +160,23 @@ def test_build_target_routes_sandbox_e2b():
     assert isinstance(build_target(local, PricingTable({})), CommandTarget)
 
 
-def test_e2b_target_measures_cost_and_stages_input(monkeypatch):
+def test_e2b_target_stages_input_and_finalizes_cost_on_close(monkeypatch):
     _install_fake_e2b(monkeypatch)
-    spec = _e2b_spec()
-    out = E2BCommandTarget(spec).run(TaskSpec(), "hello")
+    target = E2BCommandTarget(_e2b_spec())
+    out = target.run(TaskSpec(), "hello")
 
     assert out.text == "sandbox-out"
-    assert out.cost_basis == "e2b-sandbox-seconds"
-    # measured: rate x observed latency, never a declared flat number
-    assert out.cost == pytest.approx(0.001 * out.latency)
+    # honest basis: seconds are observed, the rate is user-declared
+    assert out.cost_basis == "e2b-seconds × declared-rate"
     assert "hello" in _FakeSandbox.last.files_written["/tmp/costbench_input"]
-    assert _FakeSandbox.last.killed is True  # sandbox is torn down after the run
+    # cost is finalized from the sandbox's full lifetime at close(), not per call
+    assert out.cost is None
+    assert _FakeSandbox.last.killed is False
+
+    target.close()
+
+    assert _FakeSandbox.last.killed is True  # sandbox torn down on close
+    assert out.cost is not None and out.cost >= 0
 
 
 def test_e2b_target_missing_dependency_is_friendly(monkeypatch):
@@ -190,7 +198,9 @@ def test_e2b_target_requires_api_key(monkeypatch):
 
 
 def test_e2b_target_paces_sandbox_creation(monkeypatch):
-    _install_fake_e2b(monkeypatch)
+    # A worker that always fails (no exit_code) is discarded after each run, so
+    # two sequential runs force two *creations* — letting us observe the
+    # account-wide 1/sec creation pacing between them.
     clock = [10.0]
     sleeps = []
 
@@ -201,13 +211,43 @@ def test_e2b_target_paces_sandbox_creation(monkeypatch):
         clock[0] += seconds
 
     monkeypatch.setattr("costbench.targets.time.sleep", sleep)
-    spec = _e2b_spec(sandbox_create_interval=1.0)
-    target = E2BCommandTarget(spec)
 
+    class _BrokenSandbox(_FakeSandbox):
+        @property
+        def commands(self):
+            class _Commands:
+                def run(self, cmd, timeout=None):
+                    raise RuntimeError("disconnected")
+
+            return _Commands()
+
+    monkeypatch.setitem(sys.modules, "e2b", SimpleNamespace(Sandbox=_BrokenSandbox))
+    monkeypatch.setenv("E2B_API_KEY", "test-key")
+    E2BCommandTarget._next_create_at = 0.0
+
+    target = E2BCommandTarget(_e2b_spec(sandbox_create_interval=1.0))
     target.run(TaskSpec(), "first")
     target.run(TaskSpec(), "second")
 
     assert sleeps == [pytest.approx(1.0)]
+
+
+def test_e2b_finalize_allocates_lifetime_cost_proportionally(monkeypatch):
+    _install_fake_e2b(monkeypatch)
+    target = E2BCommandTarget(_e2b_spec())  # per_second rate 0.001
+    o1 = CaseOutput(text="a", cost=None)
+    o2 = CaseOutput(text="b", cost=None)
+    slot = _E2BSandboxSlot(sandbox=_FakeSandbox.create(), started_at=100.0)
+    slot.outputs = [(o1, 1.0), (o2, 3.0)]
+    # lifetime = 110 - 100 = 10s; total cost = 0.001 * 10 = 0.01, split 1:3
+    monkeypatch.setattr("costbench.targets.time.perf_counter", lambda: 110.0)
+
+    target._finalize_slot(slot)
+
+    assert slot.sandbox.killed is True
+    assert o1.cost + o2.cost == pytest.approx(0.01)  # sums to full lifetime cost
+    assert o1.cost == pytest.approx(0.0025)
+    assert o2.cost == pytest.approx(0.0075)
 
 
 def test_e2b_target_requires_explicit_combined_rate():

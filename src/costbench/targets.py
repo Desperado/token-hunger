@@ -321,7 +321,10 @@ class E2BCommandTarget(Target):
             )
         self.pool_size = pool_size
 
-        self._pooling = False
+        # Always run through the pool. Without prepare() the limit is 1 (a single
+        # reused sandbox); the runner calls prepare() to raise it for concurrent
+        # runs. One code path means cost is finalized identically at every
+        # concurrency — no separate per-call model that bills different seconds.
         self._pool_limit = 1
         self._pool_condition = threading.Condition()
         self._available: list[_E2BSandboxSlot] = []
@@ -330,7 +333,6 @@ class E2BCommandTarget(Target):
         self._closed = False
 
     def prepare(self, concurrency: int, case_count: int) -> None:
-        self._pooling = True
         self._pool_limit = min(
             self.pool_size,
             MAX_E2B_SANDBOXES,
@@ -339,6 +341,11 @@ class E2BCommandTarget(Target):
         )
 
     def close(self) -> None:
+        # The runner calls close() only after the ThreadPoolExecutor has joined
+        # every worker (see runner.run_benchmark), so no worker is mutating a
+        # slot's `outputs` while we finalize it here. That join is what makes the
+        # unlocked `slot.outputs.append` in _run_pooled safe — preserve it if the
+        # lifecycle ever changes.
         with self._pool_condition:
             if self._closed:
                 return
@@ -351,14 +358,19 @@ class E2BCommandTarget(Target):
             self._finalize_slot(slot)
 
     def _wait_for_create_slot(self) -> None:
+        # Account-wide creation pacing. Reserve this thread's slot under the lock
+        # and advance the shared cursor, then release the lock *before* sleeping
+        # so other creators can reserve their own slots and sleep concurrently
+        # (holding the lock across sleep would serialize the whole pool warm-up).
+        # When targets declare different intervals the cursor reflects the most
+        # recent reservation; mixed intervals are not individually guaranteed.
         cls = type(self)
         with cls._create_lock:
-            now = time.monotonic()
-            wait = max(0.0, cls._next_create_at - now)
-            if wait:
-                time.sleep(wait)
-            created_at = time.monotonic()
-            cls._next_create_at = created_at + self.create_interval
+            slot_at = max(time.monotonic(), cls._next_create_at)
+            cls._next_create_at = slot_at + self.create_interval
+        delay = slot_at - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
 
     def _create_sandbox(self, sandbox_class: Any) -> _E2BSandboxSlot:
         self._wait_for_create_slot()
@@ -387,7 +399,10 @@ class E2BCommandTarget(Target):
         except Exception:
             with self._pool_condition:
                 self._creating -= 1
-                self._pool_condition.notify()
+                # notify_all, not notify: freeing creation capacity can satisfy a
+                # waiter via the create branch, but a single notify could wake one
+                # that then re-waits while another eligible waiter sleeps on.
+                self._pool_condition.notify_all()
             raise
 
         with self._pool_condition:
@@ -399,20 +414,23 @@ class E2BCommandTarget(Target):
                     pass
                 raise RuntimeError("e2b sandbox pool is closed")
             self._slots.append(slot)
-            self._pool_condition.notify()
+            self._pool_condition.notify_all()
         return slot
 
     def _release_sandbox(self, slot: _E2BSandboxSlot) -> None:
         with self._pool_condition:
             if not self._closed:
                 self._available.append(slot)
-            self._pool_condition.notify()
+            # notify_all: a returned slot can satisfy a waiter via either the
+            # available-slot branch or the create branch, so wake them all.
+            self._pool_condition.notify_all()
 
     def _discard_sandbox(self, slot: _E2BSandboxSlot) -> None:
         with self._pool_condition:
             if slot in self._slots:
                 self._slots.remove(slot)
-            self._pool_condition.notify()
+            # notify_all: removing a slot frees creation capacity for any waiter.
+            self._pool_condition.notify_all()
         self._finalize_slot(slot)
 
     def _finalize_slot(self, slot: _E2BSandboxSlot) -> None:
@@ -460,7 +478,7 @@ class E2BCommandTarget(Target):
         err = None if exit_code == 0 else f"exit {exit_code}: {stderr.strip()[:200]}"
         return CaseOutput(
             text=stdout, error=err, cost=cost,
-            cost_basis="e2b-sandbox-seconds", latency=latency,
+            cost_basis=self.cost_spec.label, latency=latency,
         )
 
     def _payload(self, task: TaskSpec, case_input: str) -> str:
@@ -469,61 +487,20 @@ class E2BCommandTarget(Target):
             return json.dumps({"system": task.system, "input": rendered})
         return rendered
 
-    def _run_once(self, sandbox_class: Any, payload: str) -> CaseOutput:
-        self._wait_for_create_slot()
-        start = time.perf_counter()
-        sbx = None
-        proc = None
-        failure = None
-        try:
-            sbx = (
-                sandbox_class.create(template=self.template)
-                if self.template
-                else sandbox_class.create()
-            )
-            sbx.files.write(_E2B_INPUT_PATH, payload)
-            shell = f"{self.command} < {_E2B_INPUT_PATH}"
-            proc = sbx.commands.run(f"sh -c {shlex.quote(shell)}", timeout=self.timeout)
-        except Exception as exc:  # noqa: BLE001 — surface sandbox errors per-case
-            failure = exc
-        finally:
-            if sbx is not None:
-                try:
-                    sbx.kill()
-                except Exception:  # noqa: BLE001 — best-effort cleanup
-                    pass
-        latency = time.perf_counter() - start
-
-        if failure is not None:
-            # Non-zero exit comes back as an exception carrying the streams.
-            if getattr(failure, "exit_code", None) is not None:
-                return self._result(
-                    failure,
-                    latency,
-                    self.cost_spec.cost_for_seconds(latency),
-                )
-            return CaseOutput(
-                text="", error=f"{type(failure).__name__}: {failure}",
-                cost=self.cost_spec.cost_for_seconds(latency),
-                cost_basis="e2b-sandbox-seconds", latency=latency,
-            )
-        return self._result(
-            proc,
-            latency,
-            self.cost_spec.cost_for_seconds(latency),
-        )
-
     def _run_pooled(self, sandbox_class: Any, payload: str) -> CaseOutput:
         started_at = time.perf_counter()
         try:
             slot = self._acquire_sandbox(sandbox_class)
         except Exception as exc:  # noqa: BLE001
             latency = time.perf_counter() - started_at
+            # cost is None, not 0.0: a failed acquire may have partially spun up
+            # a billed sandbox, so the real cost is unknown — never report $0 for
+            # "we don't know" (that would deflate cost-per-success silently).
             return CaseOutput(
                 text="",
                 error=f"{type(exc).__name__}: {exc}",
-                cost=0.0,
-                cost_basis="e2b-sandbox-seconds",
+                cost=None,
+                cost_basis=self.cost_spec.label,
                 latency=latency,
             )
 
@@ -542,7 +519,7 @@ class E2BCommandTarget(Target):
                 text="",
                 error=f"{type(failure).__name__}: {failure}",
                 cost=None,
-                cost_basis="e2b-sandbox-seconds",
+                cost_basis=self.cost_spec.label,
                 latency=latency,
             )
         else:
@@ -572,8 +549,6 @@ class E2BCommandTarget(Target):
             )
 
         payload = self._payload(task, case_input)
-        if not self._pooling:
-            return self._run_once(Sandbox, payload)
         return self._run_pooled(Sandbox, payload)
 
 

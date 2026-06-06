@@ -1,9 +1,12 @@
 # e2b sandbox demo — run a `command` target inside an isolated cloud microVM.
 #
-# Same stdin->stdout contract as a local `command` target, but the code runs
-# off your machine and the cost is MEASURED from billed sandbox seconds rather
-# than declared up front. Use it to safely benchmark an untrusted/external
-# pipeline, or to get a real infra cost for a homegrown agent.
+# Same stdin->stdout contract as a local `command` target, but the command runs
+# off your machine. Cost = observed sandbox seconds x the per-second rate you
+# declare below (only the seconds are measured; the rate is your number and must
+# already include the template's vCPU + RAM tier). Use it to run an external
+# pipeline off-machine, or to get a runtime-based infra cost for a homegrown
+# agent. Note: a `code` check still runs on the host, so it is rejected here
+# unless you set `allow_local_code_checks: true`.
 #
 # Needs:  pip install -e ".[e2b]"  and  export E2B_API_KEY=...
 #
@@ -24,7 +27,7 @@ targets:
       basis: per_request
       per_request: 0.00105
 
-  # Same classifier, but executed in an e2b sandbox with a measured cost.
+  # Same classifier, but executed in an e2b sandbox; cost from runtime seconds.
   - type: command
     id: sandboxed-agent
     sandbox: e2b
