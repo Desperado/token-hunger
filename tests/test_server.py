@@ -223,6 +223,19 @@ def test_build_cfg_accepts_trusted_dataset_fingerprint():
     assert cfg.fingerprint == "0123456789ab"
 
 
+def test_predicted_uses_leading_label_when_exact_format_check_fails():
+    output = "CLARIFY\n\nThe request is coherent but missing a required value."
+
+    predicted = server._predicted(
+        output,
+        "CLARIFY",
+        False,
+        ["ANSWERABLE", "CLARIFY", "CONTRADICTORY", "NONSENSE"],
+    )
+
+    assert predicted == "CLARIFY"
+
+
 def test_static_path_containment_guard_logic():
     root = server.UI_DIR.resolve()
     assert root in (root / "styles.css").resolve().parents

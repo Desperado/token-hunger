@@ -484,12 +484,16 @@ def _predicted(output: str, expect: Any, passed: bool, labels: list[str]) -> str
     if passed:
         return str(expect)
     no = _norm(output)
+    first = (str(output).strip().split() or ["?"])[0]
+    normalized_first = _norm(first.rstrip(":"))
+    for label in labels:
+        if normalized_first == _norm(label):
+            return label
     for label in labels:
         if label != str(expect) and _norm(label) and _norm(label) in no:
             return label
     if len(labels) == 2:
         return next(label for label in labels if label != str(expect))
-    first = (str(output).strip().split() or ["?"])[0]
     return first[:24]
 
 

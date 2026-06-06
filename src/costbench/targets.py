@@ -94,7 +94,12 @@ class ModelTarget(Target):
         self.spec = spec
         self.pricing = pricing
         self.model = spec.raw.get("model", spec.id)
-        self.params = spec.raw.get("params", {})
+        self.params = dict(spec.raw.get("params", {}))
+        # A benchmark case must correspond to one provider attempt. Implicit
+        # SDK retries can turn one logical case into several billable calls
+        # while only the final response's usage is visible to costbench.
+        if "max_retries" not in self.params and "num_retries" not in self.params:
+            self.params["max_retries"] = 0
 
     def run(self, task: TaskSpec, case_input: str) -> CaseOutput:
         try:
