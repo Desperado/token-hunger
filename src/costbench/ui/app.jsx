@@ -115,7 +115,8 @@ function App() {
   const estSeq = useRef(0);
 
   useEffect(() => {
-    if (!task || activeIds.length === 0) { setEst(null); return; }
+    // No up-front estimate in sandbox mode — e2b cost is measured at run time.
+    if (!task || e2b.on || activeIds.length === 0) { setEst(null); return; }
     const seq = ++estSeq.current;
     const handle = setTimeout(() => {
       CostbenchAPI.estimate({
@@ -141,6 +142,16 @@ function App() {
     return () => clearTimeout(handle);
   }, [task, activeIds, cases, t.outputTokens, configFingerprint]);
 
+  // ---- e2b sandbox execution (toggle: default OFF = previous model run) ----
+  const [e2b, setE2b] = useState({
+    on: false,
+    command: 'python3 -c "import sys;print(sys.stdin.read().strip().upper())"',
+    rate: "0.0000325",
+    template: "",
+    pool: 10,
+  });
+  const setE2bField = (k, v) => setE2b((prev) => ({ ...prev, [k]: v }));
+
   // ---- run ----
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState(null);
@@ -149,9 +160,28 @@ function App() {
   const [runProgress, setRunProgress] = useState(null);
 
   const run = () => {
-    if (running || activeIds.length === 0) return;
+    if (running) return;
+    let payload;
+    if (e2b.on) {
+      if (!e2b.command.trim()) { setRunErr("Enter a command to run in the E2B sandbox."); return; }
+      const rate = parseFloat(e2b.rate);
+      if (!(rate > 0)) { setRunErr("Enter a positive per-second sandbox rate."); return; }
+      payload = {
+        task, cases,
+        sandbox: {
+          command: e2b.command,
+          perSecond: rate,
+          template: e2b.template.trim() || null,
+          poolSize: Number(e2b.pool) || 10,
+        },
+        concurrency: Number(e2b.pool) || 10,
+      };
+    } else {
+      if (activeIds.length === 0) return;
+      payload = { task, targets: activeIds, cases };
+    }
     setRunning(true); setRunErr(null); setResults(null); setRunProgress(null);
-    CostbenchAPI.run({ task, targets: activeIds, cases }, (event) => {
+    CostbenchAPI.run(payload, (event) => {
       if (event.type === "start" || event.type === "progress") {
         setRunProgress(event);
       } else if (event.type === "result") {
@@ -221,8 +251,54 @@ function App() {
 
       <main className="cb-main">
         <Hero task={task} setTask={editTask} examples={examples} exampleId={exampleId} onPickExample={pickExample} />
+
+        <div className="cb-card" style={{ padding: 16, marginTop: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 600 }}>
+            <input type="checkbox" checked={e2b.on} onChange={(e) => setE2bField("on", e.target.checked)} />
+            Run in E2B sandbox
+            <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: 13 }}>
+              execute a command/agent in an isolated cloud microVM — cost = measured sandbox-seconds
+            </span>
+          </label>
+          {e2b.on && (
+            <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 4 }}>
+                  Command — reads each case on stdin, writes the answer to stdout
+                </div>
+                <textarea
+                  value={e2b.command}
+                  onChange={(e) => setE2bField("command", e.target.value)}
+                  rows={3} spellCheck={false}
+                  style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 13, padding: 8, borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-2)", color: "var(--text-1)" }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--text-2)" }}>
+                  $ / sandbox-second
+                  <input value={e2b.rate} onChange={(e) => setE2bField("rate", e.target.value)}
+                    style={{ width: 130, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-2)", color: "var(--text-1)", fontFamily: "monospace" }} />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--text-2)" }}>
+                  Pool size (1–10)
+                  <input type="number" min={1} max={10} value={e2b.pool} onChange={(e) => setE2bField("pool", e.target.value)}
+                    style={{ width: 90, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-2)", color: "var(--text-1)" }} />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--text-2)" }}>
+                  Template (optional)
+                  <input value={e2b.template} placeholder="default base image" onChange={(e) => setE2bField("template", e.target.value)}
+                    style={{ width: 200, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-2)", color: "var(--text-1)" }} />
+                </label>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                Model targets below are ignored while this is on. Needs <span className="mono">E2B_API_KEY</span> in the server's <span className="mono">.env</span>. Cost basis is <span className="mono">e2b-seconds × declared-rate</span>.
+              </div>
+            </div>
+          )}
+        </div>
+
         <RunBar
-          nTargets={activeRows.length}
+          nTargets={e2b.on ? 1 : activeRows.length}
           nCases={cases.length}
           est={est || { low: 0, high: 0, inTok: 0, outLow: 0, outHigh: 0, opaque: 0, rows: [] }}
           classes={classes}
