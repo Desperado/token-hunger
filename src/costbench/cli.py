@@ -2,7 +2,7 @@
 
     costbench run <config.yaml>       run a benchmark, print the table
     costbench estimate <config.yaml>  predict cost WITHOUT running targets
-    costbench suggest <task-type>     suggest models to try (priors, not truth)
+    costbench suggest [task-type]     suggest models manually or via analysis
     costbench pull <pull.yaml>        pull cases from an external source to a dump
     costbench init [path]             write a ready-to-run example config
     costbench models                  list models in the pricing table
@@ -177,18 +177,40 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
 
 
 def _cmd_suggest(args: argparse.Namespace) -> int:
+    from .analyze import analyze_config, render_analysis_terminal
+    from .config import load_config
     from .pricing import load_pricing
     from .priors import load_priors, rank_models, render_suggest_terminal
 
     pricing = load_pricing()
+    task_type = args.task_type
+    if args.analyzer_model:
+        if not args.config:
+            raise ValueError("--analyzer-model requires --config")
+        config = load_config(args.config)
+        console.print(
+            f"[yellow]analysis disclosure:[/yellow] sending task instructions "
+            f"and up to 5 case inputs to {args.analyzer_model!r}; expected "
+            f"answers, target definitions, and pricing are excluded."
+        )
+        analysis = analyze_config(config, args.analyzer_model, pricing=pricing)
+        task_type = analysis.task_type
+        render_analysis_terminal(analysis, console)
+    elif args.config:
+        raise ValueError("--config requires --analyzer-model")
+    if not task_type:
+        raise ValueError(
+            "provide a task type or use --config with --analyzer-model"
+        )
+
     try:
         priors = load_priors(args.priors_source)
     except NotImplementedError as exc:
         console.print(f"[yellow]{exc}[/yellow]")
         return 1
 
-    ranked, unranked = rank_models(args.task_type, priors, pricing, top=args.top)
-    render_suggest_terminal(args.task_type, ranked, unranked, console)
+    ranked, unranked = rank_models(task_type, priors, pricing, top=args.top)
+    render_suggest_terminal(task_type, ranked, unranked, console)
     return 0
 
 
@@ -278,7 +300,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_sug = sub.add_parser("suggest",
                            help="suggest models to try for a task type (priors, NOT ground truth)")
-    p_sug.add_argument("task_type", help="e.g. coding, math, general")
+    p_sug.add_argument("task_type", nargs="?",
+                       help="manual type: coding, math, or general")
+    p_sug.add_argument("--config",
+                       help="benchmark config to classify with an analyzer model")
+    p_sug.add_argument("--analyzer-model",
+                       help="opt-in LiteLLM model for task analysis, e.g. qwen/qwen3.5-flash")
     p_sug.add_argument("--priors-source", default="seed",
                        choices=["seed", "artificialanalysis"])
     p_sug.add_argument("--top", type=int, default=5)

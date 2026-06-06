@@ -56,6 +56,7 @@ The repository currently ships:
 - Markdown, HTML, and JSON reporting;
 - configuration and pricing fingerprints;
 - candidate model suggestions from clearly labeled priors;
+- opt-in cheap-model analysis of task category and complexity;
 - CI-friendly non-zero exit behavior for target execution errors.
 
 See [CAPABILITIES.md](CAPABILITIES.md) for the technical contract and current
