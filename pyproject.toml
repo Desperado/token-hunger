@@ -56,8 +56,6 @@ packages = ["src/costbench"]
 "src/costbench/pricing.yaml" = "costbench/pricing.yaml"
 "src/costbench/model_limits.yaml" = "costbench/model_limits.yaml"
 "src/costbench/priors.yaml" = "costbench/priors.yaml"
-"src/costbench/examples" = "costbench/examples"
-"src/costbench/ui" = "costbench/ui"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

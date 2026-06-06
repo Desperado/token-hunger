@@ -178,16 +178,22 @@ def run_benchmark(
             out: CaseOutput = target.run(config.task, case.input)
             check = make_check(case.check, check_base) if case.check else default_check
             if out.error:
-                return CaseResult(case.input, case.expect, out.text, False,
-                                  out.error, out.cost, out.cost_basis, out.latency,
-                                  error=out.error,
-                                  input_tokens=out.input_tokens,
-                                  output_tokens=out.output_tokens)
-            verdict = check(out.text, case.expect)
-            return CaseResult(case.input, case.expect, out.text, verdict.passed,
-                              verdict.detail, out.cost, out.cost_basis, out.latency,
-                              input_tokens=out.input_tokens,
-                              output_tokens=out.output_tokens)
+                result = CaseResult(
+                    case.input, case.expect, out.text, False,
+                    out.error, out.cost, out.cost_basis, out.latency,
+                    error=out.error,
+                    input_tokens=out.input_tokens,
+                    output_tokens=out.output_tokens,
+                )
+            else:
+                verdict = check(out.text, case.expect)
+                result = CaseResult(
+                    case.input, case.expect, out.text, verdict.passed,
+                    verdict.detail, out.cost, out.cost_basis, out.latency,
+                    input_tokens=out.input_tokens,
+                    output_tokens=out.output_tokens,
+                )
+            return result, out
 
         def report_case(case_index: int, result: CaseResult, completed: int) -> None:
             if case_progress:
@@ -202,27 +208,40 @@ def run_benchmark(
                     error=bool(result.error),
                 ))
 
-        if concurrency > 1:
-            indexed_results: list[Optional[CaseResult]] = [None] * len(config.cases)
-            with ThreadPoolExecutor(max_workers=concurrency) as pool:
-                futures = {
-                    pool.submit(run_case, case): i
-                    for i, case in enumerate(config.cases)
-                }
-                completed = 0
-                for future in as_completed(futures):
-                    case_index = futures[future]
-                    result = future.result()
-                    indexed_results[case_index] = result
-                    completed += 1
-                    report_case(case_index, result, completed)
-            case_results = [r for r in indexed_results if r is not None]
-        else:
-            case_results = []
-            for case_index, case in enumerate(config.cases):
-                result = run_case(case)
-                case_results.append(result)
-                report_case(case_index, result, len(case_results))
+        executions: list[tuple[CaseResult, CaseOutput]]
+        try:
+            target.prepare(concurrency, len(config.cases))
+            if concurrency > 1:
+                indexed_results: list[
+                    Optional[tuple[CaseResult, CaseOutput]]
+                ] = [None] * len(config.cases)
+                with ThreadPoolExecutor(max_workers=concurrency) as pool:
+                    futures = {
+                        pool.submit(run_case, case): i
+                        for i, case in enumerate(config.cases)
+                    }
+                    completed = 0
+                    for future in as_completed(futures):
+                        case_index = futures[future]
+                        execution = future.result()
+                        indexed_results[case_index] = execution
+                        completed += 1
+                        report_case(case_index, execution[0], completed)
+                executions = [item for item in indexed_results if item is not None]
+            else:
+                executions = []
+                for case_index, case in enumerate(config.cases):
+                    execution = run_case(case)
+                    executions.append(execution)
+                    report_case(case_index, execution[0], len(executions))
+        finally:
+            target.close()
+
+        # Resource-backed targets may finalize measured costs during close().
+        for result, output in executions:
+            result.cost = output.cost
+            result.cost_basis = output.cost_basis
+        case_results = [result for result, _ in executions]
 
         tr.cases = case_results
         results.append(tr)

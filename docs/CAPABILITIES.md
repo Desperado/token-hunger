@@ -130,14 +130,36 @@ configurations from untrusted sources must not be run.
 
 A command target may instead run inside an e2b cloud sandbox by setting
 `sandbox: e2b` (requires the `e2b` extra and `E2B_API_KEY`). The stdin/stdout
-contract is unchanged, but the code runs off the local machine — suitable for
-untrusted or external pipelines — and the cost basis becomes *measured* from
-billed sandbox seconds. A combined CPU + RAM rate must be declared with
+contract is unchanged, but the command runs off the local machine. Note the
+isolation covers the *command only*: a `code` check still runs on the host via
+`exec_module`, so combining a `code` check with a `sandbox: e2b` target is
+rejected unless the config sets `allow_local_code_checks: true`. The config
+file, stdout/stderr captured into reports, and the sandbox's network egress
+remain trusted/uncontrolled.
+
+**Cost basis.** A combined CPU + RAM rate must be declared with
 `cost.basis: per_second` and `cost.per_second: <rate>`; there is no fallback
-because E2B resource prices and template sizes vary. An optional
-`sandbox_template` selects an e2b template. Sandbox creation is paced at one
-per second for Hobby accounts; higher tiers may lower
-`sandbox_create_interval`. See `examples/sandbox/e2b.yaml`.
+because E2B resource prices and template sizes vary. Only the *seconds* are
+observed — the rate is your declared number and must already fold in the
+template's vCPU + RAM tier, so reports label this `e2b-seconds × declared-rate`,
+not "measured." The full sandbox lifetime (spin-up, idle, teardown) is billed
+and **allocated** across the cases a worker processed, weighted by each case's
+active time; per-case cost is therefore an allocation, not an isolated meter
+reading, and shifts with pool size and load. The per-call `timeout` is bounded
+(1–3600s) so a hung command cannot run up an unbounded bill.
+
+**Pooling / speed.** During a `run`, sandboxes are reused across cases instead
+of recreated for every call. The pool defaults to 10 and is bounded by
+`sandbox_pool_size` (maximum 10), runner concurrency, and case count. Sandbox
+creation is paced at one per second for Hobby accounts; higher tiers may lower
+`sandbox_create_interval`. Pool workers reuse their VM filesystem, so commands
+should be stateless between cases or clean any paths they mutate. This
+parallelizes **`command` + `sandbox: e2b` targets only** — it does not speed up
+`model`/`endpoint` targets, nor the `suggest`/analyze (LiteLLM) paths, which
+remain direct provider calls. The end-to-end speedup is unmeasured here; expect
+it to scale with concurrency up to the pool size minus per-case overhead. An
+optional `sandbox_template` selects an e2b template. See
+`examples/sandbox/e2b.yaml`.
 
 ## Correctness Checks
 
