@@ -112,6 +112,9 @@ Estimates always **round up** and carry the basis `estimated (...)` — they are
 never blended with verified `$/token` run costs. `run` records observed tokens
 to a local calibration history file (`~/.costbench/history.jsonl`, override with
 `COSTBENCH_HISTORY`, opt out with `--no-history`) so estimates tighten over time.
+Production token logs can be imported into that history with an explicit
+workload/target mapping via `costbench calibrate <config.yaml>`; see
+[`docs/CONNECTORS.md`](docs/CONNECTORS.md#importing-production-token-usage).
 
 The free-tier limit is a deliberate, **billing-free hook**: `estimate` is
 unlimited by default; a future host can cap it by setting

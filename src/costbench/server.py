@@ -146,6 +146,9 @@ def _validate_run_body(body: Any, *, allow_empty: bool = False) -> dict:
             raise ValueError(f"cases[{i}].expect must be a scalar")
     if len(targets) * len(cases) > MAX_RUNS:
         raise ValueError(f"a request cannot exceed {MAX_RUNS} target/case calls")
+    fingerprint = body.get("configFingerprint")
+    if fingerprint is not None and not re.fullmatch(r"[0-9a-f]{12}", fingerprint):
+        raise ValueError("configFingerprint must be a 12-character hex fingerprint")
 
     if "concurrency" in body:
         concurrency = body["concurrency"]
@@ -216,7 +219,13 @@ def _is_allowed_origin(value: str | None) -> bool:
     )
 
 
-def _build_cfg(task: dict, target_ids: list[str], cases: list[dict]):
+def _build_cfg(
+    task: dict,
+    target_ids: list[str],
+    cases: list[dict],
+    *,
+    config_fingerprint: str | None = None,
+):
     """Build a real Config from the posted task/targets/cases (no file written)."""
     from .config import build_config
 
@@ -230,7 +239,30 @@ def _build_cfg(task: dict, target_ids: list[str], cases: list[dict]):
         "targets": [{"type": "model", "id": tid} for tid in target_ids],
         "cases": [{"input": c["input"], "expect": c["expect"]} for c in cases],
     }
-    return build_config(raw, base_dir=Path.cwd())
+    config = build_config(raw, base_dir=Path.cwd())
+    if config_fingerprint:
+        config.fingerprint = config_fingerprint
+    return config
+
+
+def _connectors_payload(examples: list[dict]) -> list[dict]:
+    connectors = [dict(connector) for connector in _CONNECTORS]
+    qualitymax = next(
+        (example for example in examples if example["id"] == "qualitymax-crawls"),
+        None,
+    )
+    connectors.append({
+        "id": "qualitymax",
+        "name": "QualityMax",
+        "kind": "Data",
+        "status": "installed" if qualitymax else "available",
+        "cases": len(qualitymax["cases"]) if qualitymax else 0,
+        "detail": (
+            "Production AI crawl outcomes and token usage. Run "
+            "`examples/qualitymax/mvp.sh <project_id>` to refresh."
+        ),
+    })
+    return connectors
 
 
 def _models_payload(pricing) -> list[dict]:
@@ -270,7 +302,7 @@ def bootstrap_payload() -> dict:
     from .ui_examples import presets
 
     pricing = load_pricing()
-    examples = presets()
+    examples = presets(base_dir=Path.cwd())
     default = examples[0]  # support triage — matches the bundled example
     task = default["task"]
     cases = default["cases"]
@@ -282,7 +314,7 @@ def bootstrap_payload() -> dict:
         "cases": cases,
         "examples": examples,
         "models": models,
-        "connectors": _CONNECTORS,
+        "connectors": _connectors_payload(examples),
         "mcpServers": _MCP,
         "meta": {
             "nCases": len(cases),
@@ -303,7 +335,12 @@ def estimate_payload(body: dict) -> dict:
     cases = body.get("cases") or []
     out_override = body.get("outputTokens")
 
-    cfg = _build_cfg(task, target_ids, cases)
+    cfg = _build_cfg(
+        task,
+        target_ids,
+        cases,
+        config_fingerprint=body.get("configFingerprint"),
+    )
     pricing = load_pricing()
     limits = load_model_limits()
     try:

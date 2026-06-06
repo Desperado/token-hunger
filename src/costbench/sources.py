@@ -30,7 +30,7 @@ def _render(template: str, row: dict) -> str:
     return out
 
 
-def _rows_from_file(path: Path) -> list[dict]:
+def rows_from_file(path: Path) -> list[dict]:
     suffix = path.suffix.lower()
     text = path.read_text(encoding="utf-8")
     if suffix == ".jsonl":
@@ -114,7 +114,7 @@ def load_cases(spec: Any, base_dir: Path) -> tuple[list[Case], str]:
         path = Path(raw_path)
         if not path.is_absolute():
             path = base_dir / path
-        rows = _rows_from_file(path)
+        rows = rows_from_file(path)
         cases = _cases_from_rows(
             rows,
             input_field=spec.get("input_field", "input"),

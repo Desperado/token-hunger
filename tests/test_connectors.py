@@ -1,4 +1,7 @@
 import json
+from datetime import datetime, timezone
+from decimal import Decimal
+from uuid import UUID
 
 import pytest
 
@@ -61,6 +64,34 @@ def test_materialize_drops_unlabeled(tmp_path):
     # _render turns None/"" into empty → dropped.
     assert result.written == 1
     assert result.dropped_unlabeled == 2
+
+
+def test_materialize_serializes_native_postgres_values(tmp_path):
+    rows = [
+        {
+            "input": "crawl",
+            "status": "completed",
+            "id": UUID("12345678-1234-5678-1234-567812345678"),
+            "created_at": datetime(2026, 6, 6, tzinfo=timezone.utc),
+            "cost_usd": Decimal("0.001234"),
+        }
+    ]
+    out = tmp_path / "postgres.jsonl"
+
+    materialize(
+        rows,
+        {
+            "expect": "{status}",
+            "passthrough": ["id", "created_at", "cost_usd"],
+        },
+        out,
+        source_label="sql",
+    )
+
+    record = json.loads(out.read_text(encoding="utf-8"))
+    assert record["id"] == "12345678-1234-5678-1234-567812345678"
+    assert record["created_at"] == "2026-06-06 00:00:00+00:00"
+    assert record["cost_usd"] == "0.001234"
 
 
 def test_pull_with_injected_fetcher(tmp_path):

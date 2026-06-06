@@ -54,6 +54,7 @@ function App() {
   const [connectors, setConnectors] = useState([]);
   const [examples, setExamples] = useState([]);
   const [exampleId, setExampleId] = useState(null);
+  const [configFingerprint, setConfigFingerprint] = useState(null);
   const [removed, setRemoved] = useState(() => new Set());
   const [drawer, setDrawer] = useState(false);
 
@@ -67,6 +68,9 @@ function App() {
         setConnectors(d.connectors || []);
         setExamples(d.examples || []);
         setExampleId(d.examples && d.examples[0] ? d.examples[0].id : null);
+        setConfigFingerprint(
+          d.examples && d.examples[0] ? d.examples[0].configFingerprint || null : null
+        );
       })
       .catch((e) => setBootErr(e.message || String(e)));
   }, []);
@@ -79,10 +83,15 @@ function App() {
     setTask(ex.task);
     setCases(ex.cases);
     setExampleId(id);
+    setConfigFingerprint(ex.configFingerprint || null);
     setResults(null);
   };
   // A manual prompt edit means it's no longer one of the presets.
-  const editTask = (nt) => { setTask(nt); setExampleId(null); };
+  const editTask = (nt) => {
+    setTask(nt);
+    setExampleId(null);
+    setConfigFingerprint(null);
+  };
 
   // ---- target selection ----
   const activeRows = useMemo(() => models.filter((r) => !removed.has(r.id)), [models, removed]);
@@ -109,7 +118,13 @@ function App() {
     if (!task || activeIds.length === 0) { setEst(null); return; }
     const seq = ++estSeq.current;
     const handle = setTimeout(() => {
-      CostbenchAPI.estimate({ task, targets: activeIds, cases, outputTokens: t.outputTokens })
+      CostbenchAPI.estimate({
+        task,
+        targets: activeIds,
+        cases,
+        outputTokens: t.outputTokens,
+        configFingerprint,
+      })
         .then((d) => {
           if (seq !== estSeq.current) return; // a newer request superseded this
           let low = 0, high = 0, inTok = 0, outLow = 0, outHigh = 0, opaque = 0;
@@ -124,7 +139,7 @@ function App() {
         .catch((e) => { if (seq === estSeq.current) setEstErr(e.message || String(e)); });
     }, 300);
     return () => clearTimeout(handle);
-  }, [task, activeIds, cases, t.outputTokens]);
+  }, [task, activeIds, cases, t.outputTokens, configFingerprint]);
 
   // ---- run ----
   const [running, setRunning] = useState(false);
@@ -169,6 +184,7 @@ function App() {
     setCases(suggestion.cases);
     setSuggestion(null);
     setExampleId(null);   // these are now custom cases
+    setConfigFingerprint(null);
     setResults(null);     // prior leaderboard is stale
   };
   const discardSuggest = () => { setSuggestion(null); setSuggestErr(null); };

@@ -1,0 +1,58 @@
+# Pull generated test code and its recorded QualityMax quality grade.
+#
+#   costbench pull examples/qualitymax/quality.pull.yaml
+
+source:
+  type: sql
+  dsn_env: QUALITYMAX_DB_URL
+  params:
+    project_id: 1
+  query: |
+    select
+      q.id as quality_history_id,
+      q.project_id,
+      q.script_id,
+      q.test_case_id,
+      s.name as script_name,
+      s.framework,
+      s.code,
+      tc.title as test_case_title,
+      tc.description as test_case_description,
+      q.overall_score,
+      q.grade,
+      q.structural_score,
+      q.contract_score,
+      q.pytest_score,
+      q.execution_score,
+      q.recorded_at
+    from quality_score_history q
+    join automation_scripts s on s.id = q.script_id
+    left join test_cases tc on tc.id = q.test_case_id
+    where q.project_id = %(project_id)s
+    order by q.id
+
+out: ../../.context/qualitymax_quality_scores.jsonl
+
+map:
+  input_template: |
+    Test case: {test_case_title}
+    Description: {test_case_description}
+    Script: {script_name}
+    Framework: {framework}
+
+    Generated test code:
+    {code}
+  expect: "{grade}"
+  passthrough:
+    - quality_history_id
+    - project_id
+    - script_id
+    - test_case_id
+    - overall_score
+    - grade
+    - structural_score
+    - contract_score
+    - pytest_score
+    - execution_score
+    - recorded_at
+  drop_unlabeled: true

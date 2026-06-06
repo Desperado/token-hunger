@@ -65,6 +65,34 @@ pull even when the underlying data is unchanged.
 See [`examples/qualitymax/`](../examples/qualitymax/) for a complete pull → run
 example (deterministic label headline + opt-in semantic judge).
 
+## Importing production token usage
+
+`costbench calibrate <config.yaml>` imports token/cost rows from a local dump
+into the same history used by `costbench estimate`. The calibration config
+names the benchmark whose fingerprint the observations belong to, filters the
+source workload, and explicitly maps source model names to benchmark targets:
+
+```yaml
+benchmark: crawl.label.yaml
+source: ../../.context/ai_cost_log.jsonl
+source_label: qualitymax-ai-cost-log
+filters: { service: crawl }
+target_map:
+  claude-haiku-4-5: anthropic/claude-haiku-4-5
+fields:
+  model: model
+  input_tokens: input_tokens
+  output_tokens: output_tokens
+  cost: cost_usd
+  timestamp: created_at
+  id: id
+```
+
+Only mapped targets present in the benchmark are imported. Stable source row
+IDs plus the benchmark fingerprint make repeated imports idempotent. This
+binding is intentionally explicit: token distributions from unrelated services
+must not calibrate a benchmark merely because they used the same model.
+
 ## Roadmap
 
 - `http` source (export APIs) and `mcp` source (read rows from an MCP server) in

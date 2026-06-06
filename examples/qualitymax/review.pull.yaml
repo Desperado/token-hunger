@@ -1,0 +1,52 @@
+# Pull BOLA/security audit findings for repositories in one project.
+#
+#   costbench pull examples/qualitymax/review.pull.yaml
+
+source:
+  type: sql
+  dsn_env: QUALITYMAX_DB_URL
+  params:
+    project_id: 1
+  query: |
+    select
+      f.id as finding_id,
+      cr.project_id,
+      r.repository_id,
+      r.repo_slug,
+      r.git_sha,
+      r.source as run_source,
+      r.run_at,
+      f.method,
+      f.path,
+      f.file,
+      f.line,
+      f.func,
+      f.grade,
+      f.acknowledged,
+      f.acknowledged_reason
+    from security_audit_findings f
+    join security_audit_runs r on r.id = f.run_id
+    join code_repositories cr on cr.id = r.repository_id
+    where cr.project_id = %(project_id)s
+    order by f.id
+
+out: ../../.context/qualitymax_security_findings.jsonl
+
+map:
+  input_template: |
+    Repository: {repo_slug}
+    Commit: {git_sha}
+    Route: {method} {path}
+    Source location: {file}:{line}
+    Function: {func}
+  expect: "{grade}"
+  passthrough:
+    - finding_id
+    - project_id
+    - repository_id
+    - grade
+    - acknowledged
+    - acknowledged_reason
+    - run_source
+    - run_at
+  drop_unlabeled: true

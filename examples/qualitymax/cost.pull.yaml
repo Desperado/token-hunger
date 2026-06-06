@@ -1,0 +1,48 @@
+# Pull actual QualityMax AI token usage and spend for one project. The output is
+# consumed by cost.calibrate.yaml, not by `costbench run`.
+#
+#   costbench pull examples/qualitymax/cost.pull.yaml
+
+source:
+  type: sql
+  dsn_env: QUALITYMAX_DB_URL
+  params:
+    project_id: 1
+  query: |
+    select
+      id,
+      project_id,
+      service,
+      model,
+      model_requested,
+      provider,
+      input_tokens,
+      output_tokens,
+      cost_usd,
+      fell_back,
+      job_id,
+      url,
+      created_at
+    from ai_cost_log
+    where project_id = %(project_id)s
+    order by created_at, id
+
+out: ../../.context/qualitymax_ai_cost_log.jsonl
+
+map:
+  input_template: "{service}: {model}"
+  expect: "{cost_usd}"
+  passthrough:
+    - id
+    - project_id
+    - service
+    - model
+    - model_requested
+    - provider
+    - input_tokens
+    - output_tokens
+    - cost_usd
+    - fell_back
+    - job_id
+    - url
+    - created_at
