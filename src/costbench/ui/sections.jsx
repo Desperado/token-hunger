@@ -297,10 +297,11 @@ function RunProgress({ progress }) {
   );
 }
 
-function RunBar({ nTargets, nCases, est, classes, check, outCeilPerCase, outLowPerCase, onRun, running, hasRun, progress }) {
+function RunBar({ nTargets, nCases, est, classes, check, outCeilPerCase, outLowPerCase, concurrency, onConcurrency, onRun, running, hasRun, progress }) {
   const [open, setOpen] = useState(false);
   const inK = est.inTok, outLow = est.outLow, outHigh = est.outHigh;
   const checkKind = typeof check === "object" ? check.type : check;
+  const par = concurrency || 12;
   return (
     <div className="cb-estwrap">
       <div className="cb-runbar">
@@ -308,6 +309,13 @@ function RunBar({ nTargets, nCases, est, classes, check, outCeilPerCase, outLowP
           <Icon name="play" size={15} />
           {running ? "Running…" : hasRun ? "Run again" : "Run benchmark"}
         </button>
+        <label className="cb-parallel" title="How many model calls run in parallel. Higher finishes the same run faster, up to each provider's rate limit."
+          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
+          <Icon name="spark" size={13} /> Parallelism
+          <input type="number" min={1} max={32} value={par} disabled={running}
+            onChange={(e) => onConcurrency(Math.max(1, Math.min(32, Number(e.target.value) || 1)))}
+            style={{ width: 52, padding: "5px 7px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-2)", color: "var(--text-1)", fontFamily: "monospace" }} />
+        </label>
         <div className="cb-estchip">
           <span className="lab">Est. cost</span>
           <span className="amt mono">{fmtCost(est.low)}<span className="dash">–</span>{fmtCost(est.high)}</span>
