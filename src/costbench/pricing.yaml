@@ -1,0 +1,55 @@
+# costbench pricing table — USD per 1,000,000 tokens.
+#
+# THIS IS THE COST CREDIBILITY OF THE TOOL. It lives in the repo, in plain
+# text, on purpose: every cost number costbench prints is computed from these
+# values, not from a number hidden inside a dependency. If you don't trust a
+# figure, you can read exactly where it came from and change it.
+#
+# Prices change often. Each entry carries a `verified` date — TREAT ANY ENTRY
+# AS STALE UNTIL YOU HAVE CHECKED IT against the provider's current price page.
+# Updating this file is the single easiest way to contribute: open a PR.
+#
+# Keys match litellm model ids (provider/model). `input` and `output` are the
+# per-1M-token prices for prompt and completion tokens respectively.
+
+anthropic/claude-haiku-4-5:
+  input: 1.00
+  output: 5.00
+  verified: 2026-06-06
+  source: https://platform.claude.com/docs/en/about-claude/pricing
+
+anthropic/claude-sonnet-4-6:
+  input: 3.00
+  output: 15.00
+  verified: 2026-06-06
+  source: https://platform.claude.com/docs/en/about-claude/pricing
+
+anthropic/claude-opus-4-7:
+  input: 5.00
+  output: 25.00
+  verified: 2026-06-06
+  source: https://platform.claude.com/docs/en/about-claude/pricing
+
+openai/gpt-5-mini:
+  input: 0.25
+  output: 2.00
+  verified: 2026-06-06
+  source: https://platform.openai.com/docs/pricing
+
+openai/gpt-5:
+  input: 1.25
+  output: 10.00
+  verified: 2026-06-06
+  source: https://platform.openai.com/docs/pricing
+
+gemini/gemini-2.5-flash:
+  input: 0.30
+  output: 2.50
+  verified: 2026-06-06
+  source: https://ai.google.dev/gemini-api/docs/pricing
+
+gemini/gemini-2.5-pro:
+  input: 1.25
+  output: 10.00
+  verified: 2026-06-06
+  source: https://ai.google.dev/gemini-api/docs/pricing
