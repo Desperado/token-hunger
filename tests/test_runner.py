@@ -88,3 +88,18 @@ def test_failed_attempt_keeps_declared_cost():
     assert report.results[0].errors == 2
     assert report.results[0].total_cost == 0.5
     assert report.results[0].cost_per_success == float("inf")
+
+
+def test_case_progress_emits_each_completion_and_preserves_result_order():
+    events = []
+    report = run_benchmark(
+        config_with([command_target("local", "PASS", 0.0)]),
+        concurrency=2,
+        case_progress=events.append,
+    )
+
+    assert len(events) == 2
+    assert {e.case_index for e in events} == {0, 1}
+    assert [e.target_completed for e in events] == [1, 2]
+    assert all(e.target_id == "local" for e in events)
+    assert [c.case_input for c in report.results[0].cases] == ["one", "two"]

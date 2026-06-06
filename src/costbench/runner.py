@@ -7,7 +7,7 @@ the only headline that tells the truth is **cost per success**.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -128,10 +128,33 @@ class BenchmarkReport:
 ProgressFn = Callable[[str, int, int], None]
 
 
+@dataclass(frozen=True)
+class CaseProgress:
+    """One completed target/case call.
+
+    ``case_index`` identifies the case in config order even when concurrent
+    calls finish out of order. The callback runs on the benchmark's calling
+    thread, so consumers can safely update counters or stream an event.
+    """
+
+    target_id: str
+    target_index: int
+    target_count: int
+    case_index: int
+    target_completed: int
+    target_total: int
+    passed: bool
+    error: bool
+
+
+CaseProgressFn = Callable[[CaseProgress], None]
+
+
 def run_benchmark(
     config: Config,
     concurrency: int = 4,
     progress: Optional[ProgressFn] = None,
+    case_progress: Optional[CaseProgressFn] = None,
 ) -> BenchmarkReport:
     if concurrency < 1:
         raise ValueError("concurrency must be at least 1")
@@ -142,7 +165,8 @@ def run_benchmark(
     default_check = make_check(config.check, check_base)
 
     results: list[TargetResult] = []
-    for spec in config.targets:
+    target_count = len(config.targets)
+    for target_index, spec in enumerate(config.targets):
         target: Target = build_target(spec, pricing)
         tr = TargetResult(
             target_id=spec.id,
@@ -165,11 +189,40 @@ def run_benchmark(
                               input_tokens=out.input_tokens,
                               output_tokens=out.output_tokens)
 
+        def report_case(case_index: int, result: CaseResult, completed: int) -> None:
+            if case_progress:
+                case_progress(CaseProgress(
+                    target_id=spec.id,
+                    target_index=target_index,
+                    target_count=target_count,
+                    case_index=case_index,
+                    target_completed=completed,
+                    target_total=len(config.cases),
+                    passed=result.passed,
+                    error=bool(result.error),
+                ))
+
         if concurrency > 1:
+            indexed_results: list[Optional[CaseResult]] = [None] * len(config.cases)
             with ThreadPoolExecutor(max_workers=concurrency) as pool:
-                case_results = list(pool.map(run_case, config.cases))
+                futures = {
+                    pool.submit(run_case, case): i
+                    for i, case in enumerate(config.cases)
+                }
+                completed = 0
+                for future in as_completed(futures):
+                    case_index = futures[future]
+                    result = future.result()
+                    indexed_results[case_index] = result
+                    completed += 1
+                    report_case(case_index, result, completed)
+            case_results = [r for r in indexed_results if r is not None]
         else:
-            case_results = [run_case(c) for c in config.cases]
+            case_results = []
+            for case_index, case in enumerate(config.cases):
+                result = run_case(case)
+                case_results.append(result)
+                report_case(case_index, result, len(case_results))
 
         tr.cases = case_results
         results.append(tr)

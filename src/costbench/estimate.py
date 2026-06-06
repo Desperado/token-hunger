@@ -52,6 +52,11 @@ class TargetEstimate:
     input_exact: bool = False
     output_ceiling: int = 0
     ceiling_source: str = ""
+    # Token totals across all cases (None for black-box targets whose tokens are
+    # not observable). Exposed so a UI can show counts, not just costs.
+    input_tokens_total: Optional[int] = None
+    output_tokens_low: Optional[int] = None
+    output_tokens_high: Optional[int] = None
 
 
 def _round_up(value: float, places: int = 6) -> float:
@@ -160,6 +165,8 @@ def _estimate_model_target(
         high_out = pcts.output_p90 * n
         output_cost_low = _round_up(_cost_for_tokens(price, 0, low_out))
         output_cost_high = _round_up(_cost_for_tokens(price, 0, high_out))
+        output_tokens_low = int(math.ceil(low_out))
+        output_tokens_high = int(math.ceil(high_out))
         calibrated = True
         cost_basis = "estimated (calibrated p50–p90)"
     else:
@@ -167,6 +174,8 @@ def _estimate_model_target(
         ceil_cost = _round_up(_cost_for_tokens(price, 0, out_total))
         output_cost_low = ceil_cost
         output_cost_high = ceil_cost
+        output_tokens_low = out_total
+        output_tokens_high = out_total
         calibrated = False
         cost_basis = "estimated (worst-case ceiling)"
 
@@ -188,6 +197,9 @@ def _estimate_model_target(
         input_exact=input_exact,
         output_ceiling=ceiling,
         ceiling_source=ceiling_source,
+        input_tokens_total=input_tokens_total,
+        output_tokens_low=output_tokens_low,
+        output_tokens_high=output_tokens_high,
     )
 
 

@@ -4,6 +4,7 @@
     costbench estimate <config.yaml>  predict cost WITHOUT running targets
     costbench suggest [task-type]     suggest models manually or via analysis
     costbench pull <pull.yaml>        pull cases from an external source to a dump
+    costbench serve                   launch the local web UI (estimate + run)
     costbench init [path]             write a ready-to-run example config
     costbench models                  list models in the pricing table
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import sys
 from importlib import resources
 from pathlib import Path
@@ -22,6 +24,38 @@ from rich.markup import escape
 from . import __version__
 
 console = Console()
+
+
+def _load_dotenv(path: str | Path = ".env") -> int:
+    """Load KEY=VALUE pairs from a local ``.env`` into the environment.
+
+    Zero-dependency and conservative: a value already set in the real
+    environment ALWAYS wins (an explicit `export` overrides the file), so this
+    only fills in what's missing. Supports ``export KEY=val``, ``#`` comments,
+    blank lines, and single/double-quoted values. Returns the number of keys set.
+    """
+    p = Path(path)
+    if not p.is_file():
+        return 0
+    loaded = 0
+    for raw in p.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):]
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key in os.environ:  # real environment wins
+            continue
+        os.environ[key] = value
+        loaded += 1
+    return loaded
 
 
 def _apply_case_limit(config, max_cases: int) -> None:
@@ -254,6 +288,13 @@ def _cmd_pull(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    from .server import serve
+
+    serve(host=args.host, port=args.port, open_browser=not args.no_open)
+    return 0
+
+
 def _cmd_models(args: argparse.Namespace) -> int:
     from .pricing import load_pricing
 
@@ -323,6 +364,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_pull.add_argument("config", help="path to the pull config YAML")
     p_pull.set_defaults(func=_cmd_pull)
 
+    p_serve = sub.add_parser(
+        "serve",
+        help="launch the local web UI (keyless estimate + run leaderboard)",
+    )
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8765)
+    p_serve.add_argument("--no-open", action="store_true",
+                         help="do not open a browser window")
+    p_serve.set_defaults(func=_cmd_serve)
+
     p_models = sub.add_parser("models", help="list models in the pricing table")
     p_models.set_defaults(func=_cmd_models)
 
@@ -330,6 +381,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    n_loaded = _load_dotenv()
+    if n_loaded:
+        console.print(f"[dim]loaded {n_loaded} var(s) from .env[/dim]")
     parser = build_parser()
     args = parser.parse_args(argv)
     try:

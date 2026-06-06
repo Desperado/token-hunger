@@ -2,7 +2,39 @@ from pathlib import Path
 
 import pytest
 
-from costbench.config import load_config
+from costbench.config import build_config, load_config
+
+
+def test_build_config_from_dict(tmp_path):
+    cfg = build_config(
+        {
+            "name": "inmem",
+            "task": {"system": "s", "prompt_template": "{input}"},
+            "check": "contains",
+            "targets": [{"type": "model", "id": "anthropic/claude-haiku-4-5"}],
+            "cases": [{"input": "a", "expect": "b"}],
+        },
+        base_dir=tmp_path,
+    )
+    assert cfg.name == "inmem"
+    assert cfg.check == "contains"
+    assert cfg.targets[0].id == "anthropic/claude-haiku-4-5"
+    assert cfg.cases[0].expect == "b"
+    assert len(cfg.fingerprint) == 12
+    assert cfg.source_path is None
+
+
+def test_build_config_fingerprint_is_stable_and_content_sensitive(tmp_path):
+    base = {
+        "task": {"system": "s"},
+        "targets": [{"type": "model", "id": "openai/gpt-5"}],
+        "cases": [{"input": "a", "expect": "b"}],
+    }
+    fp1 = build_config(dict(base), base_dir=tmp_path).fingerprint
+    fp2 = build_config(dict(base), base_dir=tmp_path).fingerprint
+    assert fp1 == fp2  # same input → same fingerprint
+    changed = {**base, "cases": [{"input": "a", "expect": "DIFFERENT"}]}
+    assert build_config(changed, base_dir=tmp_path).fingerprint != fp1
 
 
 def write_config(tmp_path: Path, body: str) -> Path:
