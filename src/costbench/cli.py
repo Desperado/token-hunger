@@ -332,7 +332,7 @@ def build_parser() -> argparse.ArgumentParser:
                        help="also write a shareable report in this format")
     p_run.add_argument("--out", help="report output path")
     p_run.add_argument("--concurrency", type=int, default=4,
-                       help="parallel calls per target (default 4)")
+                       help="parallel calls per target; use 10 for the full E2B pool")
     p_run.add_argument("--max-cases", type=int, default=0,
                        help="limit number of cases (smoke test)")
     p_run.add_argument("--no-history", action="store_true",

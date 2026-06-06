@@ -7,7 +7,7 @@
 #
 # Needs:  pip install -e ".[e2b]"  and  export E2B_API_KEY=...
 #
-#   costbench run examples/sandbox/e2b.yaml
+#   costbench run examples/sandbox/e2b.yaml --concurrency 10
 #
 # Opt in per target with `sandbox: e2b`. Set the per-second rate to the combined
 # CPU + RAM price for your template; costbench intentionally has no stale
@@ -28,6 +28,10 @@ targets:
   - type: command
     id: sandboxed-agent
     sandbox: e2b
+    # Reuse up to 10 sandboxes across cases. The runner creates no more than
+    # min(pool size, --concurrency, case count). Commands should be stateless
+    # between cases because each pool worker keeps its VM filesystem.
+    sandbox_pool_size: 10
     # This command is self-contained because repository files do not exist in
     # the base sandbox. Custom pipelines should use a template containing them.
     command:
@@ -36,9 +40,19 @@ targets:
       - |
         import sys
         text = sys.stdin.read().lower()
-        strong = ("pii", "security", "critical")
-        print("ESCALATE" if any(word in text for word in strong) else "RESOLVE")
+        strong = (
+            "fraud", "sue", "lawyer", "data leak", "deleted", "down", "outage",
+            "breach", "gdpr", "admin access", "pii", "security", "charged twice",
+            "never made", "logged into my account", "losing customers", "broke our",
+        )
+        weak = ("scam", "cancel", "unacceptable", "critical")
+        print(
+            "ESCALATE"
+            if any(word in text for word in strong + weak)
+            else "RESOLVE"
+        )
     # sandbox_template: <your e2b template id>   # optional; default base image
+    # sandbox_create_interval: 0.2  # Pro: 5 creates/sec; Hobby default is 1/sec
     cost:
       basis: per_second
       # Default 2 vCPU + 1 GiB RAM rate as of June 2026. Check current pricing.
@@ -50,7 +64,21 @@ task:
 check: exact
 
 cases:
+  - input: "I was charged twice and your phone line is dead. This is fraud."
+    expect: ESCALATE
   - input: "How do I reset my password?"
+    expect: RESOLVE
+  - input: "Your app deleted all my saved projects."
+    expect: ESCALATE
+  - input: "Where is my invoice?"
+    expect: RESOLVE
+  - input: "Cancel my subscription, this product is a scam."
+    expect: ESCALATE
+  - input: "Is there a dark mode setting?"
+    expect: RESOLVE
+  - input: "We've been down for two hours and losing customers. Unacceptable."
+    expect: ESCALATE
+  - input: "What's the difference between the Pro and Team plans?"
     expect: RESOLVE
   - input: "Customer PII is showing up in another tenant's view. Critical."
     expect: ESCALATE

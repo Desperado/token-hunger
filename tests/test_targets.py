@@ -1,4 +1,7 @@
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -89,11 +92,13 @@ class _FakeSandbox:
     """Minimal stand-in for e2b.Sandbox (the real one uses .create()/.kill())."""
 
     last = None
+    instances = []
 
     def __init__(self):
         self.files_written = {}
         self.killed = False
         _FakeSandbox.last = self
+        _FakeSandbox.instances.append(self)
 
     @classmethod
     def create(cls, template=None):
@@ -127,6 +132,7 @@ def _install_fake_e2b(monkeypatch):
     monkeypatch.setitem(sys.modules, "e2b", SimpleNamespace(Sandbox=_FakeSandbox))
     monkeypatch.setenv("E2B_API_KEY", "test-key")
     E2BCommandTarget._next_create_at = 0.0
+    _FakeSandbox.instances = []
 
 
 def _e2b_spec(**raw):
@@ -213,3 +219,109 @@ def test_e2b_target_requires_explicit_combined_rate():
 
     with pytest.raises(ValueError, match="combined per-second cost rate"):
         E2BCommandTarget(spec)
+
+
+def test_e2b_target_reuses_pool_and_finalizes_full_lifetime_cost(monkeypatch):
+    _install_fake_e2b(monkeypatch)
+    target = E2BCommandTarget(_e2b_spec(sandbox_pool_size=10))
+    target.prepare(concurrency=10, case_count=20)
+
+    first = target.run(TaskSpec(), "first")
+    second = target.run(TaskSpec(), "second")
+
+    assert len(_FakeSandbox.instances) == 1
+    assert _FakeSandbox.instances[0].killed is False
+    assert first.cost is None
+    assert second.cost is None
+
+    target.close()
+
+    assert _FakeSandbox.instances[0].killed is True
+    assert first.cost is not None and first.cost >= 0
+    assert second.cost is not None and second.cost >= 0
+    assert first.cost + second.cost > 0
+
+
+def test_e2b_target_pool_is_capped_at_ten():
+    target = E2BCommandTarget(_e2b_spec(sandbox_pool_size=10))
+
+    target.prepare(concurrency=32, case_count=100)
+
+    assert target._pool_limit == 10
+
+
+def test_e2b_target_runs_twenty_cases_with_at_most_ten_sandboxes(monkeypatch):
+    _install_fake_e2b(monkeypatch)
+    barrier = threading.Barrier(10)
+
+    class _ConcurrentSandbox(_FakeSandbox):
+        @property
+        def commands(self):
+            class _Commands:
+                def run(self, cmd, timeout=None):
+                    barrier.wait(timeout=2)
+                    time.sleep(0.01)
+                    return SimpleNamespace(
+                        exit_code=0,
+                        stdout="sandbox-out\n",
+                        stderr="",
+                    )
+
+            return _Commands()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "e2b",
+        SimpleNamespace(Sandbox=_ConcurrentSandbox),
+    )
+    target = E2BCommandTarget(_e2b_spec(sandbox_pool_size=10))
+    target.prepare(concurrency=10, case_count=20)
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        outputs = list(
+            pool.map(lambda i: target.run(TaskSpec(), str(i)), range(20))
+        )
+    target.close()
+
+    assert len(_FakeSandbox.instances) == 10
+    assert all(sandbox.killed for sandbox in _FakeSandbox.instances)
+    assert all(output.text == "sandbox-out" for output in outputs)
+    assert all(output.cost is not None for output in outputs)
+
+
+def test_e2b_target_retires_broken_sandbox_worker(monkeypatch):
+    _install_fake_e2b(monkeypatch)
+    calls = [RuntimeError("sandbox disconnected"), SimpleNamespace(
+        exit_code=0,
+        stdout="recovered\n",
+        stderr="",
+    )]
+
+    class _RecoveringSandbox(_FakeSandbox):
+        @property
+        def commands(self):
+            class _Commands:
+                def run(self, cmd, timeout=None):
+                    result = calls.pop(0)
+                    if isinstance(result, Exception):
+                        raise result
+                    return result
+
+            return _Commands()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "e2b",
+        SimpleNamespace(Sandbox=_RecoveringSandbox),
+    )
+    target = E2BCommandTarget(_e2b_spec(sandbox_pool_size=1))
+    target.prepare(concurrency=1, case_count=2)
+
+    first = target.run(TaskSpec(), "first")
+    second = target.run(TaskSpec(), "second")
+    target.close()
+
+    assert "sandbox disconnected" in first.error
+    assert second.text == "recovered"
+    assert len(_FakeSandbox.instances) == 2
+    assert all(sandbox.killed for sandbox in _FakeSandbox.instances)

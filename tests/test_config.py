@@ -154,3 +154,51 @@ cases:
 
     with pytest.raises(ValueError, match="sandbox_create_interval"):
         load_config(path)
+
+
+@pytest.mark.parametrize("pool_size", [0, 11, 1.5, "true"])
+def test_e2b_target_rejects_invalid_pool_size(tmp_path, pool_size):
+    path = write_config(
+        tmp_path,
+        f"""
+targets:
+  - type: command
+    id: sandboxed
+    command: ["cat"]
+    sandbox: e2b
+    sandbox_pool_size: {pool_size}
+    cost:
+      basis: per_second
+      per_second: 0.001
+cases:
+  - input: hello
+    expect: hello
+""",
+    )
+
+    with pytest.raises(ValueError, match="sandbox_pool_size"):
+        load_config(path)
+
+
+def test_e2b_target_accepts_ten_sandbox_pool(tmp_path):
+    path = write_config(
+        tmp_path,
+        """
+targets:
+  - type: command
+    id: sandboxed
+    command: ["cat"]
+    sandbox: e2b
+    sandbox_pool_size: 10
+    cost:
+      basis: per_second
+      per_second: 0.001
+cases:
+  - input: hello
+    expect: hello
+""",
+    )
+
+    config = load_config(path)
+
+    assert config.targets[0].raw["sandbox_pool_size"] == 10

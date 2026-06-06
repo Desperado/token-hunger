@@ -16,6 +16,8 @@ from typing import Any, Optional
 
 import yaml
 
+MAX_E2B_SANDBOXES = 10
+
 
 @dataclass
 class CostSpec:
@@ -210,6 +212,16 @@ def _parse_target(raw: dict) -> TargetSpec:
         if not math.isfinite(create_interval) or create_interval < 0:
             raise ValueError(
                 "sandbox_create_interval must be a finite non-negative number"
+            )
+        pool_size = raw.get("sandbox_pool_size", MAX_E2B_SANDBOXES)
+        if (
+            not isinstance(pool_size, int)
+            or isinstance(pool_size, bool)
+            or not 1 <= pool_size <= MAX_E2B_SANDBOXES
+        ):
+            raise ValueError(
+                f"sandbox_pool_size must be an integer between "
+                f"1 and {MAX_E2B_SANDBOXES}"
             )
     elif cost.basis == "per_second":
         raise ValueError(

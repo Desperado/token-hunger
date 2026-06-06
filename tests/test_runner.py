@@ -3,6 +3,8 @@ import sys
 import pytest
 
 from costbench.config import Case, Config, CostSpec, TargetSpec, TaskSpec
+from costbench.targets import CaseOutput
+from costbench import runner
 from costbench.runner import run_benchmark
 
 
@@ -103,3 +105,38 @@ def test_case_progress_emits_each_completion_and_preserves_result_order():
     assert [e.target_completed for e in events] == [1, 2]
     assert all(e.target_id == "local" for e in events)
     assert [c.case_input for c in report.results[0].cases] == ["one", "two"]
+
+
+def test_runner_prepares_closes_and_applies_finalized_target_costs(monkeypatch):
+    class FinalizingTarget:
+        def __init__(self):
+            self.outputs = []
+            self.prepared = None
+            self.closed = False
+
+        def prepare(self, concurrency, case_count):
+            self.prepared = (concurrency, case_count)
+
+        def run(self, task, case_input):
+            output = CaseOutput(text="PASS", cost=None, cost_basis="pending")
+            self.outputs.append(output)
+            return output
+
+        def close(self):
+            self.closed = True
+            for output in self.outputs:
+                output.cost = 0.25
+                output.cost_basis = "finalized"
+
+    target = FinalizingTarget()
+    monkeypatch.setattr(runner, "build_target", lambda spec, pricing: target)
+
+    report = run_benchmark(
+        config_with([command_target("pooled", "PASS", 0.0)]),
+        concurrency=2,
+    )
+
+    assert target.prepared == (2, 2)
+    assert target.closed is True
+    assert report.results[0].total_cost == 0.5
+    assert report.results[0].cost_basis == "finalized"

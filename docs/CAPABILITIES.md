@@ -135,9 +135,16 @@ untrusted or external pipelines — and the cost basis becomes *measured* from
 billed sandbox seconds. A combined CPU + RAM rate must be declared with
 `cost.basis: per_second` and `cost.per_second: <rate>`; there is no fallback
 because E2B resource prices and template sizes vary. An optional
-`sandbox_template` selects an e2b template. Sandbox creation is paced at one
-per second for Hobby accounts; higher tiers may lower
-`sandbox_create_interval`. See `examples/sandbox/e2b.yaml`.
+`sandbox_template` selects an e2b template. During a benchmark, sandboxes are
+reused across cases instead of recreated for every call. The pool defaults to
+10 and is bounded by `sandbox_pool_size` (maximum 10), runner concurrency, and
+case count. Sandbox creation is paced at one per second for Hobby accounts;
+higher tiers may lower `sandbox_create_interval`. The full measured lifetime
+of each pooled sandbox is allocated across the cases it processed. Pool workers
+reuse their VM filesystem, so commands should be stateless between cases or
+clean any paths they mutate. This accelerates E2B command workloads only;
+LiteLLM task analysis and case suggestion remain direct provider calls. See
+`examples/sandbox/e2b.yaml`.
 
 ## Correctness Checks
 
