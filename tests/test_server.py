@@ -135,6 +135,28 @@ def test_request_validation_rejects_bad_shapes_and_limits():
             "/api/run",
             {**valid, "cases": [{"input": "q", "expect": {"nested": True}}]},
         )
+    with pytest.raises(ValueError, match="web checks"):
+        server.validate_request(
+            "/api/run",
+            {
+                **valid,
+                "task": {
+                    **valid["task"],
+                    "check": {"type": "code", "function": "/tmp/evil.py:run"},
+                },
+            },
+        )
+    with pytest.raises(ValueError, match="unsupported numeric check option"):
+        server.validate_request(
+            "/api/run",
+            {
+                **valid,
+                "task": {
+                    **valid["task"],
+                    "check": {"type": "numeric", "function": "evil"},
+                },
+            },
+        )
     with pytest.raises(ValueError, match="target/case calls"):
         server.validate_request(
             "/api/run",

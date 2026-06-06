@@ -38,6 +38,7 @@ MAX_TARGETS = 100
 MAX_CASES = 1000
 MAX_RUNS = 10_000
 MAX_TEXT_LENGTH = 100_000
+WEB_CHECKS = {"exact", "contains", "regex", "numeric"}
 
 # Map a litellm-style provider prefix to the vendor label the UI styles by.
 _VENDOR_BY_PREFIX = {
@@ -82,6 +83,41 @@ def _validate_text(value: Any, field: str, *, allow_none: bool = False) -> None:
         raise ValueError(f"{field} is too long")
 
 
+def _validate_web_check(check: Any) -> None:
+    if isinstance(check, str):
+        kind = check
+        options = {}
+    elif isinstance(check, dict):
+        kind = check.get("type")
+        options = check
+    else:
+        raise ValueError("task.check must be a string or object")
+    if kind not in WEB_CHECKS:
+        raise ValueError(
+            "web checks must be exact, contains, regex, or numeric"
+        )
+    allowed = {
+        "exact": {"type", "case_sensitive"},
+        "contains": {"type", "case_sensitive"},
+        "regex": {"type", "case_sensitive"},
+        "numeric": {"type", "tolerance", "relative"},
+    }[kind]
+    unknown = set(options) - allowed
+    if unknown:
+        raise ValueError(f"unsupported {kind} check option: {sorted(unknown)[0]}")
+    for key in ("case_sensitive", "relative"):
+        if key in options and not isinstance(options[key], bool):
+            raise ValueError(f"task.check.{key} must be boolean")
+    if "tolerance" in options:
+        tolerance = options["tolerance"]
+        if (
+            not isinstance(tolerance, (int, float))
+            or isinstance(tolerance, bool)
+            or tolerance < 0
+        ):
+            raise ValueError("task.check.tolerance must be a non-negative number")
+
+
 def _validate_run_body(body: Any, *, allow_empty: bool = False) -> dict:
     if not isinstance(body, dict):
         raise ValueError("request body must be a JSON object")
@@ -90,9 +126,7 @@ def _validate_run_body(body: Any, *, allow_empty: bool = False) -> dict:
         raise ValueError("task must be an object")
     _validate_text(task.get("system"), "task.system", allow_none=True)
     _validate_text(task.get("promptTemplate", "{input}"), "task.promptTemplate")
-    check = task.get("check", "exact")
-    if not isinstance(check, (str, dict)):
-        raise ValueError("task.check must be a string or object")
+    _validate_web_check(task.get("check", "exact"))
 
     targets = body.get("targets")
     cases = body.get("cases")
@@ -136,6 +170,7 @@ def _validate_suggest_body(body: Any) -> dict:
         raise ValueError("task must be an object")
     _validate_text(task.get("system"), "task.system", allow_none=True)
     _validate_text(task.get("promptTemplate", "{input}"), "task.promptTemplate")
+    _validate_web_check(task.get("check", "exact"))
     n = body.get("n", 10)
     if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= 24:
         raise ValueError("n must be an integer between 1 and 24")

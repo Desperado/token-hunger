@@ -4,7 +4,9 @@ const { useState } = React;
 
 /* ---------- Hero prompt: the task the models are graded on ---------- */
 function Hero({ task, setTask, examples, exampleId, onPickExample }) {
-  const checks = ["exact", "contains", "regex", "numeric", "code"];
+  // The local web API intentionally excludes `code`: loading a Python callable
+  // is appropriate for a trusted YAML config, not an in-memory browser request.
+  const checks = ["exact", "contains", "regex", "numeric"];
   const checkKind = typeof task.check === "object" ? task.check.type : task.check;
   const selected = examples.find((ex) => ex.id === exampleId);
   const [level, setLevel] = useState(selected ? selected.level || 1 : 1);
