@@ -39,7 +39,7 @@ UI_DIR = Path(__file__).resolve().parent / "ui"
 MAX_BODY_BYTES = 2 * 1024 * 1024
 MAX_TARGETS = 100
 MAX_CASES = 1000
-MAX_RUNS = 10_000
+MAX_RUNS = 15_000  # demo: allow the full QM set (410 cases × 26 targets = 10,660)
 MAX_TEXT_LENGTH = 100_000
 WEB_CHECKS = {"exact", "contains", "regex", "numeric"}
 
