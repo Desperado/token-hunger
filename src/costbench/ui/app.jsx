@@ -191,10 +191,10 @@ function App() {
 
   // ---- gates ----
   if (bootErr) {
-    return <div className="cb-boot err">Could not reach the costbench server: {bootErr}</div>;
+    return <div className="cb-boot err">Could not reach the TokenHunger server: {bootErr}</div>;
   }
   if (!boot || !task) {
-    return <div className="cb-boot">Loading costbench…</div>;
+    return <div className="cb-boot">Loading TokenHunger…</div>;
   }
 
   const classes = classSplit(cases); // generic expected-label split (or null)
@@ -206,8 +206,8 @@ function App() {
       <header className="cb-header">
         <div className="cb-header-inner">
           <span className="cb-wordmark">
-            <span className="dot" />costbench
-            <span className="sub">cost per success</span>
+            <span className="dot" />TokenHunger
+            <span className="sub">lowest cost per successful result</span>
           </span>
           <span className="cb-header-spacer" />
           <button className="cb-iconbtn" onClick={() => setDrawer(true)}>
