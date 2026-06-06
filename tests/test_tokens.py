@@ -1,6 +1,8 @@
 import math
+import sys
+from types import SimpleNamespace
 
-from costbench.tokens import count_input_tokens
+from costbench.tokens import count_chat_input_tokens, count_input_tokens
 
 
 def test_heuristic_prose_deterministic():
@@ -60,3 +62,69 @@ def test_missing_optional_lib_falls_back_without_raising(monkeypatch):
 def test_empty_text():
     tc = count_input_tokens("", "unknown/model")
     assert tc.tokens == 0
+
+
+def test_chat_count_includes_framing_and_schema_tokens():
+    plain = count_input_tokens("hello", "openai/gpt-5")
+    chat = count_chat_input_tokens(
+        "system",
+        "hello",
+        "openai/gpt-5",
+        params={
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup",
+                        "description": "Look up a customer record",
+                    },
+                }
+            ]
+        },
+    )
+
+    assert chat.tokens > plain.tokens
+    assert chat.exact is False
+    assert chat.method.startswith("chat:")
+
+
+def test_hf_tokenizer_is_cache_only(monkeypatch):
+    calls = []
+
+    class FakeTokenizer:
+        @classmethod
+        def from_pretrained(cls, *args, **kwargs):
+            calls.append((args, kwargs))
+            return SimpleNamespace(encode=lambda text: [1, 2, 3])
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(AutoTokenizer=FakeTokenizer),
+    )
+
+    count_input_tokens("hello", "qwen/qwen3-max")
+
+    assert calls[0][1]["local_files_only"] is True
+
+
+def test_tiktoken_cache_miss_does_not_read_network(monkeypatch, tmp_path):
+    import tiktoken.load
+    import tiktoken.registry
+
+    previous = tiktoken.registry.ENCODINGS.pop("o200k_base", None)
+    network_reads = []
+    monkeypatch.setenv("TIKTOKEN_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        tiktoken.load,
+        "read_file",
+        lambda path: network_reads.append(path) or b"",
+    )
+    try:
+        tc = count_input_tokens("hello", "openai/gpt-5")
+    finally:
+        if previous is not None:
+            tiktoken.registry.ENCODINGS["o200k_base"] = previous
+
+    assert network_reads == []
+    assert tc.exact is False

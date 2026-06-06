@@ -1,7 +1,7 @@
 """`costbench estimate` engine — predict cost BEFORE you spend.
 
 Keyless, no network, no target execution. Per target we compute:
-  - input cost EXACTLY from a real token count (tokens.count_input_tokens), and
+  - input cost from a request-aware tokenizer estimate, and
   - output cost as a RANGE: a worst-case ceiling from max_output_tokens, or a
     calibrated p50–p90 range once enough run history exists.
 
@@ -21,7 +21,7 @@ from .history import Observation, TokenPercentiles, percentiles_for
 from .limits import DEFAULT_MAX_OUTPUT_TOKENS
 from .pricing import AmortizedGpuPrice, ModelPrice, PricingTable
 from .targets import _render_prompt
-from .tokens import count_input_tokens
+from .tokens import count_chat_input_tokens
 
 
 @dataclass(frozen=True)
@@ -64,14 +64,34 @@ def _resolve_output_ceiling(
 ) -> tuple[int, str]:
     """Worst-case output ceiling, in priority order. Returns (value, source)."""
     if max_output_override is not None:
-        return max_output_override, "CLI --max-output-tokens"
+        return _positive_ceiling(
+            max_output_override,
+            "CLI --max-output-tokens",
+        )
     params = spec.raw.get("params", {}) or {}
-    if params.get("max_tokens") is not None:
-        return int(params["max_tokens"]), "config params.max_tokens"
+    for param_name in ("max_tokens", "max_completion_tokens"):
+        if params.get(param_name) is not None:
+            return _positive_ceiling(
+                params[param_name],
+                f"config params.{param_name}",
+            )
     entry = limits.get(spec.id)
     if entry and entry.get("max_output_tokens") is not None:
-        return int(entry["max_output_tokens"]), "model_limits.yaml"
+        return _positive_ceiling(
+            entry["max_output_tokens"],
+            "model_limits.yaml",
+        )
     return DEFAULT_MAX_OUTPUT_TOKENS, f"default ({DEFAULT_MAX_OUTPUT_TOKENS})"
+
+
+def _positive_ceiling(value, source: str) -> tuple[int, str]:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{source} must be a positive integer") from exc
+    if not math.isfinite(numeric) or not numeric.is_integer() or numeric <= 0:
+        raise ValueError(f"{source} must be a positive integer")
+    return int(numeric), source
 
 
 def _apply_infra(price, spec: TargetSpec):
@@ -113,22 +133,22 @@ def _estimate_model_target(
 
     ceiling, ceiling_source = _resolve_output_ceiling(spec, limits, max_output_override)
 
-    # System prompt is sent every call — count it once per case.
-    sys_text = config.task.system or ""
-
     input_tokens_total = 0
     method = ""
     input_exact = True
     for case in config.cases:
         prompt = _render_prompt(config.task, case.input)
-        text = (sys_text + "\n" + prompt) if sys_text else prompt
-        tc = count_input_tokens(text, spec.id)
+        tc = count_chat_input_tokens(
+            config.task.system,
+            prompt,
+            spec.id,
+            spec.raw.get("params"),
+        )
         input_tokens_total += tc.tokens
         method = tc.method
         input_exact = input_exact and tc.exact
 
-    # input cost is reported exactly (from a real token count)
-    input_cost_total = _cost_for_tokens(price, input_tokens_total, 0)
+    input_cost_total = _round_up(_cost_for_tokens(price, input_tokens_total, 0))
 
     # output range
     pcts: Optional[TokenPercentiles] = None
@@ -138,13 +158,13 @@ def _estimate_model_target(
     if pcts is not None:
         low_out = pcts.output_p50 * n
         high_out = pcts.output_p90 * n
-        output_cost_low = _cost_for_tokens(price, 0, low_out)
-        output_cost_high = _cost_for_tokens(price, 0, high_out)
+        output_cost_low = _round_up(_cost_for_tokens(price, 0, low_out))
+        output_cost_high = _round_up(_cost_for_tokens(price, 0, high_out))
         calibrated = True
         cost_basis = "estimated (calibrated p50–p90)"
     else:
         out_total = ceiling * n
-        ceil_cost = _cost_for_tokens(price, 0, out_total)
+        ceil_cost = _round_up(_cost_for_tokens(price, 0, out_total))
         output_cost_low = ceil_cost
         output_cost_high = ceil_cost
         calibrated = False
@@ -161,8 +181,8 @@ def _estimate_model_target(
         input_cost_total=input_cost_total,
         output_cost_low=output_cost_low,
         output_cost_high=output_cost_high,
-        per_case_low=low_total / n if n else 0.0,
-        per_case_high=high_total / n if n else 0.0,
+        per_case_low=_round_up(low_total / n) if n else 0.0,
+        per_case_high=_round_up(high_total / n) if n else 0.0,
         calibrated=calibrated,
         tokenizer_method=method,
         input_exact=input_exact,
@@ -194,7 +214,7 @@ def _estimate_blackbox_target(spec: TargetSpec, config: Config) -> TargetEstimat
             per_case_high=None,
             note="declare a cost basis to estimate this target.",
         )
-    total = per_req * n
+    total = _round_up(per_req * n)
     return TargetEstimate(
         target_id=spec.id,
         target_type=spec.type,
@@ -205,8 +225,8 @@ def _estimate_blackbox_target(spec: TargetSpec, config: Config) -> TargetEstimat
         input_cost_total=None,
         output_cost_low=total,
         output_cost_high=total,
-        per_case_low=per_req,
-        per_case_high=per_req,
+        per_case_low=_round_up(per_req),
+        per_case_high=_round_up(per_req),
         note=spec.cost.assumption,
     )
 

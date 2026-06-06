@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from .config import CostSpec, TargetSpec, TaskSpec
-from .pricing import PricingTable
+from .pricing import AmortizedGpuPrice, PricingTable
 
 
 @dataclass
@@ -81,6 +81,7 @@ class ModelTarget(Target):
     def __init__(self, spec: TargetSpec, pricing: PricingTable):
         self.spec = spec
         self.pricing = pricing
+        self.model = spec.raw.get("model", spec.id)
         self.params = spec.raw.get("params", {})
 
     def run(self, task: TaskSpec, case_input: str) -> CaseOutput:
@@ -100,7 +101,7 @@ class ModelTarget(Target):
         start = time.perf_counter()
         try:
             resp = litellm.completion(
-                model=self.spec.id, messages=messages, **self.params
+                model=self.model, messages=messages, **self.params
             )
         except Exception as exc:  # noqa: BLE001 — surface provider errors per-case
             return CaseOutput(text="", error=f"{type(exc).__name__}: {exc}",
@@ -114,9 +115,16 @@ class ModelTarget(Target):
 
         cost, basis = None, "unknown"
         price = self.pricing.get(self.spec.id)
+        if isinstance(price, AmortizedGpuPrice) and self.spec.infra_cost is not None:
+            price = price.with_infra(
+                gpu_hourly_rate=self.spec.infra_cost.gpu_hourly_rate,
+                throughput_tokens_per_sec=(
+                    self.spec.infra_cost.throughput_tokens_per_sec
+                ),
+            )
         if price and in_tok is not None and out_tok is not None:
             cost = price.cost(in_tok, out_tok)
-            basis = "$/token"
+            basis = price.cost_basis_label
         elif in_tok is not None:
             basis = "tokens (no price in table)"
 

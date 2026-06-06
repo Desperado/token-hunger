@@ -1,3 +1,5 @@
+import pytest
+
 from costbench.config import Case, Config, CostSpec, TargetSpec, TaskSpec
 from costbench.estimate import estimate_config
 from costbench.history import Observation
@@ -62,6 +64,46 @@ def test_params_max_tokens_used_as_ceiling():
     e = estimate_config(cfg, _pricing(), load_model_limits())[0]
     assert e.output_ceiling == 7
     assert "params.max_tokens" in e.ceiling_source
+
+
+def test_params_max_completion_tokens_used_as_ceiling():
+    t = _model_target(
+        raw={
+            "type": "model",
+            "id": "openai/gpt-5",
+            "params": {"max_completion_tokens": 9},
+        }
+    )
+    cfg = _config([t])
+    e = estimate_config(cfg, _pricing(), load_model_limits())[0]
+    assert e.output_ceiling == 9
+    assert "params.max_completion_tokens" in e.ceiling_source
+
+
+@pytest.mark.parametrize("value", [0, -1, 1.5])
+def test_rejects_nonpositive_output_override(value):
+    cfg = _config([_model_target()])
+
+    with pytest.raises(ValueError, match="positive integer"):
+        estimate_config(
+            cfg,
+            _pricing(),
+            load_model_limits(),
+            max_output_override=value,
+        )
+
+
+def test_rejects_nonpositive_config_output_ceiling():
+    t = _model_target(
+        raw={
+            "type": "model",
+            "id": "openai/gpt-5",
+            "params": {"max_tokens": -5},
+        }
+    )
+
+    with pytest.raises(ValueError, match="params.max_tokens"):
+        estimate_config(_config([t]), _pricing(), load_model_limits())
 
 
 def test_calibrated_range_with_history():

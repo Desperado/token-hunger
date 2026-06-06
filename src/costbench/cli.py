@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from importlib import resources
 from pathlib import Path
@@ -21,6 +22,16 @@ from . import __version__
 console = Console()
 
 
+def _apply_case_limit(config, max_cases: int) -> None:
+    if max_cases < 0:
+        raise ValueError("--max-cases cannot be negative")
+    if not max_cases or max_cases >= len(config.cases):
+        return
+    config.cases = config.cases[:max_cases]
+    subset = f"{config.fingerprint}:first-cases:{max_cases}"
+    config.fingerprint = hashlib.sha256(subset.encode("utf-8")).hexdigest()[:12]
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     from .config import load_config
     from .pricing import load_pricing
@@ -28,10 +39,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .runner import run_benchmark
 
     config = load_config(args.config)
-    if args.max_cases < 0:
-        raise ValueError("--max-cases cannot be negative")
-    if args.max_cases:
-        config.cases = config.cases[: args.max_cases]
+    _apply_case_limit(config, args.max_cases)
 
     # Warn loudly when a model target has no committed price — the cost number
     # is the credibility, so silence here would be dishonest.

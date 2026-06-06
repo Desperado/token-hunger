@@ -14,6 +14,30 @@ check. The result shows whether a cheaper call is actually cheaper after failed
 outputs are counted. Reports carry separate fingerprints for the benchmark
 configuration and effective pricing table.
 
+## What Exists Today
+
+costbench is an installable Python 3.10+ CLI with these implemented workflows:
+
+- run the same cases against LiteLLM models, HTTP endpoints, and local commands;
+- grade outputs with exact, contains, regex, numeric, or custom Python checks;
+- report pass rate, errors, latency, cost per run, and cost per success;
+- estimate model and black-box target costs before execution;
+- calibrate output-token estimates from local run history;
+- price vendor models from a versioned table and self-hosted models from
+  amortized GPU cost;
+- suggest candidate models from clearly labeled benchmark priors;
+- export Markdown, HTML, and JSON reports;
+- identify benchmark and pricing inputs with deterministic fingerprints;
+- run cases concurrently and return non-zero exit codes for execution errors.
+
+The estimator requires no API key or target execution. Tokenizer cache misses
+fall back to a local heuristic rather than downloading assets. Partial
+`--max-cases` runs receive a different fingerprint, so smoke-test observations
+cannot calibrate the full benchmark accidentally.
+
+For the complete technical inventory and boundaries, see
+[docs/CAPABILITIES.md](docs/CAPABILITIES.md).
+
 ## Why
 
 Token prices do not answer the question engineering teams care about:
@@ -58,11 +82,11 @@ Available report formats are Markdown, HTML, and JSON.
 ## Predict Cost Before You Spend
 
 `costbench estimate <config>` predicts cost from your config **without running a
-single target** — no API key, no network. It counts input tokens with a
-billing-grade tokenizer when one is installed (`pip install -e ".[tokenizers]"`)
-and an over-estimate-safe heuristic otherwise, then prices a range:
+single target** — no API key, no network. It counts the chat request with a
+locally available tokenizer (`pip install -e ".[tokenizers]"`) and an
+over-estimate-safe heuristic otherwise, then prices a range:
 
-- **input cost** is exact (computed from a real token count);
+- **input cost** is tokenized from messages, framing, and configured schemas;
 - **output cost** is a worst-case ceiling from `max_tokens`/`model_limits.yaml`,
   or a calibrated p50–p90 range once you have run history.
 
@@ -92,10 +116,11 @@ costbench suggest math --top 3
 ```
 
 Priors are a **starting point, not ground truth** — your own `costbench run` is
-ground truth. The bundled seed dataset uses only openly-licensed benchmarks
-(HumanEval, MMLU-Pro) plus cited provider numbers. Artificial Analysis is **not
-bundled**; it is an opt-in runtime source requiring your own
-`ARTIFICIAL_ANALYSIS_API_KEY` (roadmap item). See [docs/PRIORS.md](docs/PRIORS.md).
+ground truth. The bundled seed dataset currently contains clearly marked
+illustrative placeholders and must not be used as published evidence.
+Artificial Analysis data is **not bundled**; its opt-in runtime integration is
+a roadmap item and currently returns a clear not-implemented error. See
+[docs/PRIORS.md](docs/PRIORS.md).
 
 ## Compare Models
 
@@ -222,10 +247,15 @@ safe); override them for your own hardware per target:
 targets:
   - type: model
     id: local/gemma-27b
+    model: ollama/gemma3:27b       # executable LiteLLM provider/model ID
     infra_cost:
       gpu_hourly_rate: 1.03         # your GPU $/hour
       throughput_tokens_per_sec: 3100
 ```
+
+`id` selects the costbench pricing entry and report label. When that ID is not
+itself executable by LiteLLM, set `model` to the provider/model ID used for the
+actual request.
 
 ## Metric
 
@@ -260,5 +290,7 @@ pytest
 python -m build
 ```
 
-The initial scope intentionally excludes historical storage, hosted execution,
-team dashboards, auto-generated cases, and LLM-as-judge defaults.
+The initial scope intentionally excludes shared/hosted historical storage,
+hosted execution, team dashboards, auto-generated cases, and LLM-as-judge
+defaults. Local calibration history is implemented in
+`~/.costbench/history.jsonl`.

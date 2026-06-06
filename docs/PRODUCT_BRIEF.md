@@ -41,6 +41,26 @@ Supported targets:
 
 The first experience works offline with no API keys.
 
+## Implemented Today
+
+The repository currently ships:
+
+- an installable Python CLI and wheel;
+- model, endpoint, and command target adapters;
+- deterministic and custom-code correctness checks;
+- concurrent benchmark execution;
+- actual cost-per-run and cost-per-success aggregation;
+- offline pre-run cost estimation with conservative output ceilings;
+- local calibration history using observed provider token usage;
+- vendor token pricing and self-hosted amortized GPU pricing;
+- Markdown, HTML, and JSON reporting;
+- configuration and pricing fingerprints;
+- candidate model suggestions from clearly labeled priors;
+- CI-friendly non-zero exit behavior for target execution errors.
+
+See [CAPABILITIES.md](CAPABILITIES.md) for the technical contract and current
+boundaries.
+
 ## Why It Is Different
 
 Observability products measure spend but usually do not prove correctness.
@@ -77,6 +97,7 @@ Open source remains complete for:
 - local benchmarks;
 - custom cases and correctness checks;
 - raw-model, endpoint, and command comparisons;
+- offline estimates and local calibration history;
 - Markdown, HTML, and JSON reports;
 - self-managed automation.
 
@@ -120,9 +141,9 @@ excellent setup, and faster learning from real benchmark results.
 
 ## Immediate Roadmap
 
-1. Ship the deterministic local runner and offline demo.
-2. Validate setup and methodology with real external workflows.
-3. Add benchmark manifests that preserve model, price-table, and environment
-   metadata.
-4. Improve billing fidelity for caching, tools, retries, and tiered pricing.
+1. Validate setup and methodology with real external workflows.
+2. Add benchmark manifests that preserve runtime environment metadata beyond
+   the existing configuration and pricing fingerprints.
+3. Improve billing fidelity for caching, tools, retries, and tiered pricing.
+4. Add production-oriented latency statistics and repeated-run analysis.
 5. Test demand for managed continuous runs before building a hosted platform.

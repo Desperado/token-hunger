@@ -1,9 +1,9 @@
 """Keyless token counting for `costbench estimate`.
 
 The whole point of estimate is to predict cost WITHOUT a key and WITHOUT
-network. We count input tokens with a billing-grade tokenizer when one is
-importable (tiktoken, mistral-common, HF transformers, deepseek), and fall back
-to an over-estimate-safe heuristic otherwise.
+network. We count text with a provider-appropriate tokenizer when one is
+available locally (tiktoken, mistral-common, HF transformers, deepseek), and
+fall back to an over-estimate-safe heuristic otherwise.
 
 Every tokenizer library is OPTIONAL and lazily imported inside its strategy
 (mirroring the lazy `import litellm` in targets.py). costbench installed with no
@@ -16,8 +16,10 @@ global heuristic fallback.
 
 from __future__ import annotations
 
+import json
 import math
 import re
+import threading
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -26,6 +28,7 @@ from typing import Callable, Optional
 _CJK_RE = re.compile(r"[　-鿿가-힯]")
 _CODE_HINTS = ("{", "}", ";", "def ", "function ")
 _FOUR_SPACES = re.compile(r" {4,}")
+_TIKTOKEN_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -82,13 +85,23 @@ def _heuristic(text: str, model_id: str, pad: float) -> TokenCount:
 def _tiktoken_count(text: str, encoding: str) -> Optional[int]:
     try:
         import tiktoken  # lazy, optional
+        import tiktoken.load as tiktoken_load
     except Exception:  # noqa: BLE001 — any import/runtime failure => fall back
         return None
-    try:
-        enc = tiktoken.get_encoding(encoding)
-        return len(enc.encode(text))
-    except Exception:  # noqa: BLE001
-        return None
+    with _TIKTOKEN_LOCK:
+        original_read_file = tiktoken_load.read_file
+
+        def reject_cache_miss(path: str) -> bytes:
+            raise OSError(f"offline tokenizer cache miss: {path}")
+
+        tiktoken_load.read_file = reject_cache_miss
+        try:
+            enc = tiktoken.get_encoding(encoding)
+            return len(enc.encode(text))
+        except Exception:  # noqa: BLE001
+            return None
+        finally:
+            tiktoken_load.read_file = original_read_file
 
 
 def _openai_strategy(text: str, model_id: str) -> TokenCount:
@@ -130,7 +143,7 @@ def _hf_strategy(text: str, model_id: str, hf_repo: str, pad: float) -> TokenCou
     try:
         from transformers import AutoTokenizer  # lazy, optional
 
-        tok = AutoTokenizer.from_pretrained(hf_repo)
+        tok = AutoTokenizer.from_pretrained(hf_repo, local_files_only=True)
         n = len(tok.encode(text))
         return TokenCount(n, f"hf:{hf_repo}", exact=True, pad_applied=0.0)
     except Exception:  # noqa: BLE001
@@ -178,3 +191,52 @@ def count_input_tokens(text: str, model_id: str) -> TokenCount:
         prefix, fn = max(matches, key=lambda pf: len(pf[0]))
         return fn(text, model_id)
     return _heuristic(text, model_id, pad=0.20)
+
+
+_TOKEN_BEARING_PARAMS = ("tools", "functions", "response_format")
+
+
+def count_chat_input_tokens(
+    system: Optional[str],
+    prompt: str,
+    model_id: str,
+    params: Optional[dict] = None,
+) -> TokenCount:
+    """Estimate tokens for the actual chat request shape.
+
+    Provider chat serialization is not stable enough to call this billing-exact
+    across models. Count each message with the selected tokenizer, add
+    conservative framing tokens, and include model-visible request schemas.
+    """
+    messages = []
+    if system:
+        messages.append(("system", system))
+    messages.append(("user", prompt))
+
+    counts = [count_input_tokens(content, model_id) for _, content in messages]
+    total = sum(c.tokens for c in counts)
+    total += 4 * len(messages) + 3
+
+    visible_params = {
+        key: params[key]
+        for key in _TOKEN_BEARING_PARAMS
+        if params and params.get(key) is not None
+    }
+    if visible_params:
+        schema_text = json.dumps(
+            visible_params,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        schema_count = count_input_tokens(schema_text, model_id)
+        counts.append(schema_count)
+        total += schema_count.tokens + 4
+
+    methods = sorted({c.method for c in counts})
+    return TokenCount(
+        tokens=total,
+        method=f"chat:{'+'.join(methods)}",
+        exact=False,
+        pad_applied=max((c.pad_applied for c in counts), default=0.0),
+    )
