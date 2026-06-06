@@ -7,6 +7,10 @@ build/
 *.egg-info/
 costbench-report.*
 costbench-estimate.*
-# Pulled case dumps may contain customer data — never commit them.
+# Pulled case dumps may contain customer data — never commit them. Keep dumps
+# under .context/ (the recommended `out:` location); the patterns below are a
+# backstop for the dump + its .meta.json sidecar written elsewhere.
 .context/
 *.jsonl.meta.json
+*.json.meta.json
+*.csv.meta.json

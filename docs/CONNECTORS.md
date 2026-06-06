@@ -43,7 +43,7 @@ source:
   type: sql                 # implemented; http and mcp are planned
   dsn_env: SOME_DB_URL      # connection string read from this env var (use a read-only role)
   params: { project_id: 1 } # bound into the query (%(name)s placeholders)
-  query: "select ... from ... where project_id = %(project_id)s"
+  query: "select ... from ... where project_id = %(project_id)s order by id"
 out: ../../.context/cases.jsonl
 map:
   input_template: "{title}: {steps}"   # or input_field: <column>
@@ -56,6 +56,11 @@ map:
 label *and* a free-text expected result); each run config then picks which
 column is `expect` via `expect_field`. Install the SQL driver with
 `pip install 'costbench[sql]'`.
+
+Give the query a deterministic `ORDER BY`: the dump fingerprint is computed over
+the rows in the order returned, and a database does not guarantee row order
+without one — so an unordered query can produce a different fingerprint on each
+pull even when the underlying data is unchanged.
 
 See [`examples/qualitymax/`](../examples/qualitymax/) for a complete pull → run
 example (deterministic label headline + opt-in semantic judge).

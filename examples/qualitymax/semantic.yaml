@@ -26,7 +26,7 @@ task:
 # is the expected_results text rather than the pass/fail label.
 check:
   type: code
-  function: examples/qualitymax/judge.py:grade
+  function: judge.py:grade   # resolved relative to this config file
 
 cases:
   source: file

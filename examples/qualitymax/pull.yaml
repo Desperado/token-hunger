@@ -37,6 +37,9 @@ source:
     ) ar on true
     where tc.project_id = %(project_id)s
       and tc.expected_results is not null
+    -- Deterministic row order so the dump fingerprint is stable across pulls
+    -- (Postgres does not guarantee ordering without an explicit ORDER BY).
+    order by tc.id
 
 out: ../../.context/qualitymax_cases.jsonl
 
@@ -60,5 +63,9 @@ map:
     - execution_time
     - test_case_id
     - project_id
-  # A case with no recorded outcome can't be scored on the label metric.
+  # A case with no recorded outcome can't be scored on the label metric, so it
+  # is dropped here at pull time (keyed on `expect` = result_status). Note this
+  # also keeps those rows out of the *semantic* run, even though it could score
+  # them against expected_results — set drop_unlabeled: false here if you want
+  # the dump to retain unlabeled rows for the semantic benchmark.
   drop_unlabeled: true

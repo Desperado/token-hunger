@@ -128,9 +128,11 @@ def materialize(
             dropped += 1
             continue
 
-        record = {"input": str(case_input), "expect": expect}
-        for col in passthrough:
-            record[col] = row.get(col)
+        # Passthrough columns first, so the canonical input/expect can never be
+        # silently clobbered by a passthrough column named "input" or "expect".
+        record = {col: row.get(col) for col in passthrough}
+        record["input"] = str(case_input)
+        record["expect"] = expect
         out_rows.append(record)
 
     # Deterministic bytes: stable key order, no run-to-run nondeterminism, so the

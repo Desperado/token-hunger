@@ -30,12 +30,15 @@ targets:
 task:
   system: >
     You are predicting whether an automated UI test for the following test case
-    will PASS or FAIL when executed. Reply with exactly one word: PASS or FAIL.
+    will pass or fail when executed. Reply with exactly one lowercase word
+    matching the recorded outcome vocabulary: "passed" or "failed".
   prompt_template: "{input}"
 
-# Deterministic: does the model's word contain the recorded verdict? The labels
-# in the dump are QualityMax statuses like "passed"/"failed"; 'contains' matches
-# PASS↔passed case-insensitively. Swap to a code check if your statuses differ.
+# Deterministic: does the model's output contain the recorded verdict? 'contains'
+# tests expect ⊆ output, so the prompt above asks the model to emit the same
+# words the dump stores (QualityMax statuses like "passed"/"failed"); the match
+# is case-insensitive and tolerates extra text. If your statuses use a different
+# vocabulary, change the prompt to match it (or swap to a code check).
 check: contains
 
 cases:
