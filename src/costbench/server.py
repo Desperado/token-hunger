@@ -500,7 +500,7 @@ def run_payload(body: dict, case_progress=None) -> dict:
     task = body["task"]
     target_ids = body.get("targets") or []
     cases = body.get("cases") or []
-    concurrency = int(body.get("concurrency", 4))
+    concurrency = int(body.get("concurrency", 8))
 
     cfg = _build_cfg(task, target_ids, cases, sandbox=body.get("sandbox"))
     pricing = load_pricing()
@@ -570,7 +570,7 @@ def stream_run_payload(body: dict, emit) -> dict:
     # In sandbox mode the single command target replaces the model list.
     n_targets = 1 if body.get("sandbox") is not None else len(target_ids)
     total = n_targets * len(cases)
-    concurrency = int(body.get("concurrency", 4))
+    concurrency = int(body.get("concurrency", 8))
     started = time.monotonic()
     completed = passes = errors = 0
 
