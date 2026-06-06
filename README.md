@@ -375,3 +375,16 @@ The initial scope intentionally excludes shared/hosted historical storage,
 hosted execution, team dashboards, auto-generated cases, and LLM-as-judge
 defaults. Local calibration history is implemented in
 `~/.costbench/history.jsonl`.
+
+## License
+
+Source-available under the [Functional Source License,
+Version 1.1, Apache 2.0 Future License (FSL-1.1-ALv2)](LICENSE) — created by
+Sentry. Free for any non-competing use: internal use, modifications,
+contributions, education, research, and professional services. The only thing
+it withholds is offering costbench itself as a competing commercial product or
+service. Two years after each release, that version automatically converts to
+plain Apache 2.0.
+
+> The "Other" tag GitHub shows in the sidebar is a quirk of its license
+> detector — FSL is not on the SPDX list, so GitHub can't name it.
