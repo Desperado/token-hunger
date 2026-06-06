@@ -70,7 +70,12 @@ def _resolve_input_path(raw: Any, config_dir: Path, allowed_root: Path) -> Path:
     candidate = Path(raw)
     if not candidate.is_absolute():
         candidate = config_dir / candidate
-    resolved = candidate.resolve()
+    try:
+        # strict=True follows every symlink and rejects missing/broken
+        # components before the containment check.
+        resolved = candidate.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"invalid calibration input path {str(raw)!r}") from exc
     if not resolved.is_relative_to(allowed_root):
         raise ValueError(
             f"calibration input path {str(raw)!r} escapes allowed root {allowed_root}"
@@ -85,13 +90,13 @@ def import_calibration(
     allowed_root: Optional[str | Path] = None,
 ) -> CalibrationImportResult:
     """Load a calibration YAML and bind matching rows to one benchmark."""
-    config_path = Path(path).resolve()
-    root = (
-        Path(allowed_root).resolve()
-        if allowed_root is not None
-        else Path.cwd().resolve()
-    )
-    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config_path = Path(path).resolve(strict=True)
+    root_raw = Path(allowed_root) if allowed_root is not None else Path.cwd()
+    root = root_raw.resolve(strict=True)
+    try:
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError("invalid calibration YAML") from exc
     if not isinstance(raw, dict):
         raise ValueError("calibration config root must be a mapping")
 
@@ -102,6 +107,7 @@ def import_calibration(
     if not source_raw:
         raise ValueError("calibration config needs a 'source' path")
 
+    # SECURITY: every YAML-derived file path is resolved and contained before use.
     benchmark_path = _resolve_input_path(benchmark_raw, config_path.parent, root)
     source_path = _resolve_input_path(source_raw, config_path.parent, root)
 

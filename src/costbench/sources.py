@@ -119,7 +119,7 @@ def load_cases(
         path = Path(raw_path)
         if not path.is_absolute():
             path = base_dir / path
-        path = path.resolve()
+        path = path.resolve(strict=True)
         if allowed_root is not None:
             root = allowed_root.resolve()
             if not path.is_relative_to(root):

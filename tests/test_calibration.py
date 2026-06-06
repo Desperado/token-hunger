@@ -108,6 +108,11 @@ target_map:
 def test_import_calibration_rejects_path_traversal(tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
+    (tmp_path / "benchmark.yaml").write_text(
+        "targets: [{type: model, id: anthropic/claude-haiku-4-5}]\n"
+        "cases: [{input: x, expect: y}]\n",
+        encoding="utf-8",
+    )
     outside = tmp_path / "outside.jsonl"
     outside.write_text("{}\n", encoding="utf-8")
     config = root / "calibrate.yaml"
@@ -130,6 +135,11 @@ source: ../outside.jsonl
 def test_import_calibration_rejects_symlink_escape(tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
+    (root / "benchmark.yaml").write_text(
+        "targets: [{type: model, id: anthropic/claude-haiku-4-5}]\n"
+        "cases: [{input: x, expect: y}]\n",
+        encoding="utf-8",
+    )
     outside = tmp_path / "outside.jsonl"
     outside.write_text("{}\n", encoding="utf-8")
     (root / "source.jsonl").symlink_to(outside)
@@ -186,3 +196,18 @@ source: costs.jsonl
         assert "escapes allowed root" in str(exc)
     else:
         raise AssertionError("nested case-source traversal was not rejected")
+
+
+def test_import_calibration_rejects_unsafe_yaml_tag(tmp_path):
+    config = tmp_path / "calibrate.yaml"
+    config.write_text(
+        "!!python/object/apply:os.system ['echo unsafe']\n",
+        encoding="utf-8",
+    )
+
+    try:
+        import_calibration(config, allowed_root=tmp_path)
+    except ValueError as exc:
+        assert "invalid calibration YAML" in str(exc)
+    else:
+        raise AssertionError("unsafe YAML tag was not rejected")
