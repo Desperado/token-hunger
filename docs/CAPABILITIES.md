@@ -117,7 +117,11 @@ provider ID.
 ### Endpoint
 
 Endpoint targets send a configurable JSON request with optional bearer-token
-authentication and extract output through a dotted response path.
+authentication and extract output through a dotted response path. The `url` must
+use an `http`/`https` scheme; loopback, private, link-local, and cloud-metadata
+hosts (e.g. `169.254.169.254`) are rejected by default to avoid pointing the
+benchmark at internal services (SSRF). Set `allow_private_endpoint: true` on the
+target to benchmark a genuinely local service such as a localhost model server.
 
 ### Command
 

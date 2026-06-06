@@ -113,6 +113,54 @@ cases:
         load_config(path)
 
 
+def _endpoint_config(tmp_path, url, *, allow_private=False):
+    allow = "\n    allow_private_endpoint: true" if allow_private else ""
+    return write_config(
+        tmp_path,
+        f"""
+targets:
+  - type: endpoint
+    id: service
+    url: "{url}"{allow}
+    cost:
+      basis: per_request
+      per_request: 0.01
+cases:
+  - input: hello
+    expect: hello
+""",
+    )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ftp://example.com/x",          # non-http scheme
+        "file:///etc/passwd",           # file scheme
+        "http://localhost:8080/run",    # loopback hostname
+        "http://127.0.0.1/run",         # loopback IP
+        "http://169.254.169.254/latest/meta-data",  # cloud metadata SSRF
+        "http://10.0.0.5/internal",     # private range
+        "http://192.168.1.10/x",        # private range
+    ],
+)
+def test_endpoint_rejects_dangerous_url(tmp_path, url):
+    with pytest.raises(ValueError):
+        load_config(_endpoint_config(tmp_path, url))
+
+
+def test_endpoint_allows_public_url(tmp_path):
+    config = load_config(_endpoint_config(tmp_path, "https://api.example.com/run"))
+    assert config.targets[0].raw["url"] == "https://api.example.com/run"
+
+
+def test_endpoint_allows_local_url_with_opt_in(tmp_path):
+    config = load_config(
+        _endpoint_config(tmp_path, "http://localhost:11434/api", allow_private=True)
+    )
+    assert config.targets[0].raw["url"] == "http://localhost:11434/api"
+
+
 def test_e2b_target_requires_explicit_per_second_rate(tmp_path):
     path = write_config(
         tmp_path,
