@@ -1,3 +1,4 @@
+import base64
 import sys
 import threading
 import time
@@ -12,6 +13,7 @@ from costbench.targets import (
     CaseOutput,
     CommandTarget,
     E2BCommandTarget,
+    EndpointTarget,
     ModelTarget,
     _E2BSandboxSlot,
     build_target,
@@ -106,6 +108,69 @@ def test_model_target_applies_infra_override_and_gpu_basis(monkeypatch):
     output = ModelTarget(spec, pricing).run(TaskSpec(), "hello")
 
     assert output.cost == pytest.approx(0.002)
+    assert output.cost_basis == "amortized GPU (batch 1)"
+
+
+def test_endpoint_target_supports_basic_auth_and_ollama_token_usage(monkeypatch):
+    calls = []
+
+    class _Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "response": "completed",
+                "prompt_eval_count": 100,
+                "eval_count": 2,
+            }
+
+    monkeypatch.setitem(
+        sys.modules,
+        "httpx",
+        SimpleNamespace(
+            request=lambda *args, **kwargs: calls.append((args, kwargs)) or _Response()
+        ),
+    )
+    monkeypatch.setenv("OLLAMA_AUTH", "alice:hunter2")
+    spec = TargetSpec(
+        type="endpoint",
+        id="local/gemma-27b",
+        raw={
+            "type": "endpoint",
+            "id": "local/gemma-27b",
+            "url": "https://llm.example/api/generate",
+            "auth_env": "OLLAMA_AUTH",
+            "auth_scheme": "basic",
+            "request_template": {
+                "model": "gemma3:27b-it-q4_K_M",
+                "prompt": "{input}",
+                "stream": False,
+            },
+            "response_path": "response",
+            "input_tokens_path": "prompt_eval_count",
+            "output_tokens_path": "eval_count",
+            "token_priced": True,
+        },
+    )
+    pricing = PricingTable(
+        {
+            "local/gemma-27b": AmortizedGpuPrice(
+                gpu_hourly_rate=0.60,
+                throughput_tokens_per_sec=100,
+            )
+        }
+    )
+
+    output = EndpointTarget(spec, pricing).run(TaskSpec(), "predict this")
+
+    expected = base64.b64encode(b"alice:hunter2").decode("ascii")
+    assert calls[0][1]["headers"]["Authorization"] == f"Basic {expected}"
+    assert calls[0][1]["json"]["prompt"] == "predict this"
+    assert output.text == "completed"
+    assert output.input_tokens == 100
+    assert output.output_tokens == 2
+    assert output.cost == pytest.approx(pricing.get(spec.id).cost(100, 2))
     assert output.cost_basis == "amortized GPU (batch 1)"
 
 

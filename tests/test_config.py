@@ -113,6 +113,25 @@ cases:
         load_config(path)
 
 
+def test_endpoint_rejects_unknown_auth_scheme(tmp_path):
+    path = write_config(
+        tmp_path,
+        """
+targets:
+  - type: endpoint
+    id: service
+    url: "https://example.com/run"
+    auth_scheme: digest
+cases:
+  - input: hello
+    expect: hello
+""",
+    )
+
+    with pytest.raises(ValueError, match="auth_scheme"):
+        load_config(path)
+
+
 def _endpoint_config(tmp_path, url, *, allow_private=False):
     allow = "\n    allow_private_endpoint: true" if allow_private else ""
     return write_config(

@@ -7,9 +7,10 @@ keys, so it is not exercised here; its shaping is covered by the runner tests.
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 from costbench import server
 from costbench.history import Observation, append_observations
-import pytest
 
 
 def test_vendor_inference():
@@ -180,6 +181,28 @@ def test_public_host_relaxes_guards_for_hosted_deploy(monkeypatch):
     assert not server._is_local_http_authority("attacker.example")
 
 
+def test_self_hosted_models_use_authenticated_ollama_endpoints(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "https://llm.example")
+    monkeypatch.setenv("OLLAMA_MODEL", "gemma3:27b-it-q4_K_M")
+    monkeypatch.setenv("OLLAMA_QWEN_MODEL", "qwen3:14b")
+
+    cfg = server._build_cfg(
+        {"system": "Classify.", "promptTemplate": "{input}", "check": "exact"},
+        ["local/gemma-27b", "local/qwen-coder"],
+        [{"input": "case", "expect": "completed"}],
+    )
+
+    gemma, qwen = cfg.targets
+    assert gemma.type == "endpoint"
+    assert gemma.raw["url"] == "https://llm.example/api/generate"
+    assert gemma.raw["request_template"]["model"] == "gemma3:27b-it-q4_K_M"
+    assert gemma.raw["auth_scheme"] == "basic"
+    assert gemma.raw["token_priced"] is True
+    assert qwen.raw["url"] == "https://llm.example/api/generate"
+    assert qwen.raw["request_template"]["model"] == "qwen3:14b"
+    assert qwen.raw["request_template"]["think"] is False
+
+
 def test_request_validation_rejects_bad_shapes_and_limits():
     valid = {
         "task": {"system": "Answer.", "promptTemplate": "{input}", "check": "exact"},
@@ -226,7 +249,9 @@ def test_request_validation_rejects_bad_shapes_and_limits():
             "/api/run",
             {
                 **valid,
-                "targets": [f"model/{i}" for i in range(11)],
+                "targets": [
+                    f"model/{i}" for i in range(server.MAX_RUNS // 1000 + 1)
+                ],
                 "cases": [{"input": "q", "expect": "a"}] * 1000,
             },
         )

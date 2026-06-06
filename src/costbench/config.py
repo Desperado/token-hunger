@@ -255,6 +255,11 @@ def _parse_target(raw: dict) -> TargetSpec:
         _validate_endpoint_url(
             raw["url"], bool(raw.get("allow_private_endpoint", False))
         )
+        auth_scheme = raw.get("auth_scheme", "bearer")
+        if auth_scheme not in ("bearer", "basic"):
+            raise ValueError(
+                f"endpoint auth_scheme must be bearer or basic, got {auth_scheme!r}"
+            )
     if ttype == "command" and not raw.get("command"):
         raise ValueError(f"command target missing 'command': {raw!r}")
     cost = _parse_cost(raw.get("cost"))

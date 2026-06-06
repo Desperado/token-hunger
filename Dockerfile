@@ -13,8 +13,8 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY . .
 # Editable install keeps the bundled ui/ assets resolvable via the source tree.
-# [models] pulls LiteLLM so `model` targets can actually run; [tokenizers] for
-# better local cost estimation.
-RUN pip install --no-cache-dir -e ".[models,tokenizers]"
+# [models] pulls LiteLLM so `model` targets can actually run; [endpoint] powers
+# the authenticated Ollama adapters; [tokenizers] improves local estimation.
+RUN pip install --no-cache-dir -e ".[models,endpoint,tokenizers]"
 ENV PORT=8765
 CMD ["sh", "-c", "costbench serve --host 0.0.0.0 --port ${PORT:-8765} --no-open"]

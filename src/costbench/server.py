@@ -22,9 +22,9 @@ targets, and cases. ``run`` needs provider API keys in the environment just like
 from __future__ import annotations
 
 import base64
-import json
 import hmac
 import ipaddress
+import json
 import os
 import re
 import sys
@@ -66,6 +66,10 @@ _CONNECTORS = [
      "detail": "Read rows from an MCP server (planned)."},
 ]
 _MCP = []  # MCP usage/trace connectors are not wired yet — show none rather than fake.
+_OLLAMA_TARGETS = {
+    "local/gemma-27b": ("OLLAMA_BASE_URL", "OLLAMA_MODEL"),
+    "local/qwen-coder": ("OLLAMA_BASE_URL", "OLLAMA_QWEN_MODEL"),
+}
 
 
 def vendor_of(model_id: str) -> str:
@@ -297,6 +301,47 @@ def _sandbox_target(sandbox: dict) -> dict:
     return target
 
 
+def _ollama_target(target_id: str, task: dict) -> dict:
+    base_env, model_env = _OLLAMA_TARGETS[target_id]
+    base_url = os.environ.get(base_env, "").strip().rstrip("/")
+    model = os.environ.get(model_env, "").strip()
+    if not base_url or not model:
+        missing = base_env if not base_url else model_env
+        raise ValueError(
+            f"self-hosted target {target_id!r} needs environment variable {missing!r}"
+        )
+    request_template = {
+        "model": model,
+        "prompt": "{input}",
+        "stream": False,
+        "options": {"temperature": 0, "num_predict": 8},
+    }
+    if task.get("system"):
+        request_template["system"] = task["system"]
+    if target_id == "local/qwen-coder":
+        request_template["think"] = False
+    return {
+        "type": "endpoint",
+        "id": target_id,
+        "url": f"{base_url}/api/generate",
+        "auth_env": "OLLAMA_AUTH",
+        "auth_scheme": "basic",
+        "request_template": request_template,
+        "response_path": "response",
+        "input_tokens_path": "prompt_eval_count",
+        "output_tokens_path": "eval_count",
+        "token_priced": True,
+    }
+
+
+def _web_target(target_id: str, task: dict) -> dict:
+    if target_id in _OLLAMA_TARGETS:
+        base_env, model_env = _OLLAMA_TARGETS[target_id]
+        if os.environ.get(base_env) and os.environ.get(model_env):
+            return _ollama_target(target_id, task)
+    return {"type": "model", "id": target_id}
+
+
 def _build_cfg(
     task: dict,
     target_ids: list[str],
@@ -311,7 +356,7 @@ def _build_cfg(
     targets = (
         [_sandbox_target(sandbox)]
         if sandbox is not None
-        else [{"type": "model", "id": tid} for tid in target_ids]
+        else [_web_target(tid, task) for tid in target_ids]
     )
     raw = {
         "name": task.get("name", "costbench"),
@@ -487,11 +532,11 @@ def suggest_cases_payload(body: dict) -> dict:
 def _result_basis(pricing, target_id: str, target_type: str) -> str:
     from .pricing import AmortizedGpuPrice
 
-    if target_type != "model":
-        return "declared per_request"
     price = pricing.get(target_id)
     if isinstance(price, AmortizedGpuPrice):
         return "amortized GPU (batch 1)"
+    if target_type != "model":
+        return "declared per_request"
     return "vendor $/token"
 
 

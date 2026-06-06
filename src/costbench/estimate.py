@@ -19,7 +19,7 @@ from typing import Optional
 from .config import Config, TargetSpec
 from .history import Observation, TokenPercentiles, percentiles_for
 from .limits import DEFAULT_MAX_OUTPUT_TOKENS
-from .pricing import AmortizedGpuPrice, ModelPrice, PricingTable
+from .pricing import AmortizedGpuPrice, PricingTable
 from .targets import _render_prompt
 from .tokens import count_chat_input_tokens
 
@@ -252,7 +252,7 @@ def estimate_config(
 ) -> list[TargetEstimate]:
     estimates: list[TargetEstimate] = []
     for spec in config.targets:
-        if spec.type == "model":
+        if spec.type == "model" or spec.raw.get("token_priced", False):
             estimates.append(
                 _estimate_model_target(
                     spec, config, pricing, limits, history, max_output_override

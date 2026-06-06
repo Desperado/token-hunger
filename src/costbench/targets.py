@@ -12,6 +12,7 @@ run without them; they're only needed when you actually use a model/endpoint.
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import os
@@ -156,18 +157,41 @@ class EndpointTarget(Target):
     config and reported with its basis — never blended with per-token numbers.
     """
 
-    def __init__(self, spec: TargetSpec):
+    def __init__(self, spec: TargetSpec, pricing: PricingTable):
         self.spec = spec
+        self.pricing = pricing
         self.url = spec.raw["url"]
         self.method = spec.raw.get("method", "POST").upper()
         self.headers = dict(spec.raw.get("headers", {}))
-        auth_env = spec.raw.get("auth_env")
-        if auth_env:
-            token = os.environ.get(auth_env, "")
-            self.headers.setdefault("Authorization", f"Bearer {token}")
         self.request_template = spec.raw.get("request_template", {"input": "{input}"})
         self.response_path = spec.raw.get("response_path")
+        self.input_tokens_path = spec.raw.get("input_tokens_path")
+        self.output_tokens_path = spec.raw.get("output_tokens_path")
         self.cost_spec: CostSpec = spec.cost
+
+    def _headers(self) -> dict[str, str]:
+        headers = dict(self.headers)
+        auth_env = self.spec.raw.get("auth_env")
+        if not auth_env:
+            return headers
+        token = os.environ.get(auth_env, "")
+        scheme = self.spec.raw.get("auth_scheme", "bearer").lower()
+        if scheme == "basic":
+            token = base64.b64encode(token.encode("utf-8")).decode("ascii")
+            value = f"Basic {token}"
+        else:
+            value = f"Bearer {token}"
+        headers.setdefault("Authorization", value)
+        return headers
+
+    @staticmethod
+    def _token_count(data: Any, path: Optional[str]) -> Optional[int]:
+        if not path:
+            return None
+        value = _dig(data, path)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"{path!r} must resolve to a non-negative integer")
+        return value
 
     def run(self, task: TaskSpec, case_input: str) -> CaseOutput:
         try:
@@ -186,11 +210,24 @@ class EndpointTarget(Target):
                 text="",
                 error=f"environment variable {auth_env!r} is not set",
             )
+        if (
+            auth_env
+            and self.spec.raw.get("auth_scheme", "bearer").lower() == "basic"
+            and ":" not in os.environ[auth_env]
+        ):
+            return CaseOutput(
+                text="",
+                error=f"environment variable {auth_env!r} must use user:password format",
+            )
 
         start = time.perf_counter()
         try:
             resp = httpx.request(
-                self.method, self.url, json=body, headers=self.headers, timeout=120.0
+                self.method,
+                self.url,
+                json=body,
+                headers=self._headers(),
+                timeout=120.0,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -203,16 +240,27 @@ class EndpointTarget(Target):
 
         try:
             text = _dig(data, self.response_path) if self.response_path else data
+            input_tokens = self._token_count(data, self.input_tokens_path)
+            output_tokens = self._token_count(data, self.output_tokens_path)
         except (KeyError, IndexError, TypeError, ValueError) as exc:
-            return CaseOutput(text="", error=f"response_path {self.response_path!r}: {exc}",
+            return CaseOutput(text="", error=f"endpoint response mapping: {exc}",
                               cost=self.cost_spec.amortized_per_request(),
                               cost_basis=self.cost_spec.label,
                               latency=latency)
 
+        cost = self.cost_spec.amortized_per_request()
+        basis = self.cost_spec.label
+        price = self.pricing.get(self.spec.id)
+        if price and input_tokens is not None and output_tokens is not None:
+            cost = price.cost(input_tokens, output_tokens)
+            basis = price.cost_basis_label
+
         return CaseOutput(
             text=str(text),
-            cost=self.cost_spec.amortized_per_request(),
-            cost_basis=self.cost_spec.label,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost=cost,
+            cost_basis=basis,
             latency=latency,
         )
 
@@ -572,7 +620,7 @@ def build_target(spec: TargetSpec, pricing: PricingTable) -> Target:
     if spec.type == "model":
         return ModelTarget(spec, pricing)
     if spec.type == "endpoint":
-        return EndpointTarget(spec)
+        return EndpointTarget(spec, pricing)
     if spec.type == "command":
         if spec.raw.get("sandbox") == "e2b":
             return E2BCommandTarget(spec)
