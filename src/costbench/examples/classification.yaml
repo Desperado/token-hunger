@@ -1,0 +1,96 @@
+# costbench example — support-ticket triage.
+#
+# This ships as the default on purpose: raw models only, a generic task, a
+# deterministic check. No vendor, no SaaS, no home-field advantage. Point it at
+# your own task by swapping the cases and the system prompt.
+#
+# Run it:
+#   export ANTHROPIC_API_KEY=...      # for the anthropic/* targets
+#   export OPENAI_API_KEY=...         # for the openai/* targets
+#   costbench run examples/classification.yaml --report md
+#
+# You don't need every provider — delete the targets you don't have keys for.
+
+name: Support ticket triage (ESCALATE vs RESOLVE)
+
+targets:
+  - type: model
+    id: anthropic/claude-haiku-4-5
+  - type: model
+    id: anthropic/claude-opus-4-7
+  - type: model
+    id: openai/gpt-5-mini
+  - type: model
+    id: openai/gpt-5
+
+  # A non-model target competes on the same field. Uncomment and point it at
+  # any HTTP service (a SaaS orchestrator, a competitor, your own pipeline).
+  # Its cost is declared, not derived from tokens, and reported with its basis.
+  # - type: endpoint
+  #   id: my-orchestrator
+  #   url: https://api.example.com/v1/run
+  #   auth_env: MY_API_KEY
+  #   request_template: { task: "{input}" }
+  #   response_path: result.answer
+  #   cost:
+  #     basis: per_request
+  #     per_request: 0.002
+
+task:
+  system: >
+    You triage customer support tickets. Reply with exactly one word and nothing
+    else: ESCALATE if the ticket involves fraud, security, legal threats, data
+    loss, an outage, or an angry churn risk; otherwise RESOLVE.
+  prompt_template: "Ticket: {input}"
+
+check: exact
+
+cases:
+  - input: "I was charged twice and your phone line is dead. This is fraud."
+    expect: ESCALATE
+  - input: "How do I reset my password?"
+    expect: RESOLVE
+  - input: "Your app deleted all my saved projects. I need them back NOW."
+    expect: ESCALATE
+  - input: "Where can I find my invoice for last month?"
+    expect: RESOLVE
+  - input: "I'm a lawyer and we will sue if this data leak isn't addressed today."
+    expect: ESCALATE
+  - input: "Can you tell me what time zone the reports use?"
+    expect: RESOLVE
+  - input: "Someone logged into my account from another country. Lock it down."
+    expect: ESCALATE
+  - input: "The export button is slightly off-center on mobile."
+    expect: RESOLVE
+  - input: "We've been down for two hours and losing customers. Unacceptable."
+    expect: ESCALATE
+  - input: "What's the difference between the Pro and Team plans?"
+    expect: RESOLVE
+  - input: "My credit card was used for a charge I never made on your site."
+    expect: ESCALATE
+  - input: "Is there a dark mode setting?"
+    expect: RESOLVE
+  - input: "Cancel my subscription, this product is a scam and I'm telling everyone."
+    expect: ESCALATE
+  - input: "How many team members can I invite on the free tier?"
+    expect: RESOLVE
+  - input: "Your latest update broke our production integration. Revenue is down."
+    expect: ESCALATE
+  - input: "Do you have a keyboard shortcut for search?"
+    expect: RESOLVE
+  - input: "I keep getting logged out randomly but it's not a big deal."
+    expect: RESOLVE
+  - input: "There's a typo on your pricing page."
+    expect: RESOLVE
+  - input: "GDPR request: delete all my personal data within 30 days as required."
+    expect: ESCALATE
+  - input: "Can I change the language of the dashboard to German?"
+    expect: RESOLVE
+  - input: "An employee who left still has admin access to our account."
+    expect: ESCALATE
+  - input: "What's your refund policy for annual plans?"
+    expect: RESOLVE
+  - input: "The CSV import shows the date column in the wrong format."
+    expect: RESOLVE
+  - input: "Customer PII is showing up in another tenant's view. Critical."
+    expect: ESCALATE

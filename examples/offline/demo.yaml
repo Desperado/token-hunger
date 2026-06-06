@@ -1,0 +1,54 @@
+# Offline demo — runs with ZERO API keys and zero cost.
+#
+# Two local 'command' targets (a naive vs a smarter keyword classifier) so you
+# can see the whole output and the cost-per-success idea before spending a cent:
+#
+#   costbench run examples/offline/demo.yaml
+#
+# The "cheap-naive" target is cheaper per run but misses more tickets, so it can
+# end up more expensive per CORRECT answer than "premium-smart". That inversion
+# is the entire point of the tool.
+
+name: Offline demo (no API keys needed)
+
+targets:
+  - type: command
+    id: cheap-naive
+    command: ["python3", "examples/offline/classify.py", "naive"]
+    cost:
+      basis: per_request
+      per_request: 0.0010
+
+  - type: command
+    id: premium-smart
+    command: ["python3", "examples/offline/classify.py", "smart"]
+    cost:
+      basis: per_request
+      per_request: 0.00105
+
+task:
+  prompt_template: "{input}"
+
+check: exact
+
+cases:
+  - input: "I was charged twice and your phone line is dead. This is fraud."
+    expect: ESCALATE
+  - input: "How do I reset my password?"
+    expect: RESOLVE
+  - input: "Your app deleted all my saved projects."
+    expect: ESCALATE
+  - input: "Where is my invoice?"
+    expect: RESOLVE
+  - input: "Cancel my subscription, this product is a scam."
+    expect: ESCALATE
+  - input: "Is there a dark mode setting?"
+    expect: RESOLVE
+  - input: "We've been down for two hours and losing customers. Unacceptable."
+    expect: ESCALATE
+  - input: "What's the difference between the Pro and Team plans?"
+    expect: RESOLVE
+  - input: "Customer PII is showing up in another tenant's view. Critical."
+    expect: ESCALATE
+  - input: "There's a typo on your pricing page."
+    expect: RESOLVE
