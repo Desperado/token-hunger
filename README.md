@@ -16,6 +16,20 @@ against apparently cheap models instead of being hidden by a low per-call price.
 > The command-line engine is `costbench` (see Quick Start). TokenHunger is the
 > product around it.
 
+## Demo
+
+Run `costbench serve` for a local web UI: pick a task, choose the models to
+compare, and benchmark them on the same cases — ranked by **cost per success**.
+
+![TokenHunger — pick a task, models, and cases](docs/screenshots/overview.png)
+
+Every model is graded on the same cases with the same check, then ranked by
+total cost ÷ correct answers, so a model that fails costs more per success than
+its per-token price suggests. Runs are parallelized (tune the **Parallelism**
+control) and tokens/costs are provider-reported.
+
+![TokenHunger — cost-per-success leaderboard](docs/screenshots/leaderboard.png)
+
 A target can be:
 
 - a raw model called through LiteLLM;
