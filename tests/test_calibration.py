@@ -76,8 +76,16 @@ target_map:
     )
     history = tmp_path / "history.jsonl"
 
-    first = import_calibration(config, history_path=history)
-    second = import_calibration(config, history_path=history)
+    first = import_calibration(
+        config,
+        history_path=history,
+        allowed_root=tmp_path,
+    )
+    second = import_calibration(
+        config,
+        history_path=history,
+        allowed_root=tmp_path,
+    )
 
     assert first.rows == 4
     assert first.matched == 3
@@ -95,3 +103,86 @@ target_map:
     assert loaded[0].cost == 0.001
     assert loaded[0].source == "qualitymax"
     assert loaded[0].observation_id.startswith("qualitymax:")
+
+
+def test_import_calibration_rejects_path_traversal(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text("{}\n", encoding="utf-8")
+    config = root / "calibrate.yaml"
+    config.write_text(
+        """
+benchmark: ../benchmark.yaml
+source: ../outside.jsonl
+""",
+        encoding="utf-8",
+    )
+
+    try:
+        import_calibration(config, allowed_root=root)
+    except ValueError as exc:
+        assert "escapes allowed root" in str(exc)
+    else:
+        raise AssertionError("path traversal was not rejected")
+
+
+def test_import_calibration_rejects_symlink_escape(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text("{}\n", encoding="utf-8")
+    (root / "source.jsonl").symlink_to(outside)
+    config = root / "calibrate.yaml"
+    config.write_text(
+        """
+benchmark: benchmark.yaml
+source: source.jsonl
+""",
+        encoding="utf-8",
+    )
+
+    try:
+        import_calibration(config, allowed_root=root)
+    except ValueError as exc:
+        assert "escapes allowed root" in str(exc)
+    else:
+        raise AssertionError("symlink escape was not rejected")
+
+
+def test_import_calibration_rejects_nested_case_source_escape(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text(
+        json.dumps({"input": "secret", "expect": "completed"}) + "\n",
+        encoding="utf-8",
+    )
+    (root / "costs.jsonl").write_text("{}\n", encoding="utf-8")
+    (root / "benchmark.yaml").write_text(
+        """
+targets:
+  - type: model
+    id: anthropic/claude-haiku-4-5
+cases:
+  source: file
+  path: ../outside.jsonl
+""",
+        encoding="utf-8",
+    )
+    config = root / "calibrate.yaml"
+    config.write_text(
+        """
+benchmark: benchmark.yaml
+source: costs.jsonl
+""",
+        encoding="utf-8",
+    )
+
+    try:
+        import_calibration(config, allowed_root=root)
+    except ValueError as exc:
+        assert "file case source" in str(exc)
+        assert "escapes allowed root" in str(exc)
+    else:
+        raise AssertionError("nested case-source traversal was not rejected")

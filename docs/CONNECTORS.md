@@ -92,6 +92,9 @@ Only mapped targets present in the benchmark are imported. Stable source row
 IDs plus the benchmark fingerprint make repeated imports idempotent. This
 binding is intentionally explicit: token distributions from unrelated services
 must not calibrate a benchmark merely because they used the same model.
+Calibration input paths are resolved through symlinks and must remain inside
+the current working directory. Run the command from the repository root; paths
+that traverse outside it are rejected.
 
 ## Roadmap
 

@@ -87,7 +87,12 @@ def _cases_from_rows(
     return cases
 
 
-def load_cases(spec: Any, base_dir: Path) -> tuple[list[Case], str]:
+def load_cases(
+    spec: Any,
+    base_dir: Path,
+    *,
+    allowed_root: Optional[Path] = None,
+) -> tuple[list[Case], str]:
     """Resolve a config ``cases:`` value into cases plus a content key.
 
     ``spec`` is either a list (inline cases — the original form) or a mapping
@@ -114,6 +119,13 @@ def load_cases(spec: Any, base_dir: Path) -> tuple[list[Case], str]:
         path = Path(raw_path)
         if not path.is_absolute():
             path = base_dir / path
+        path = path.resolve()
+        if allowed_root is not None:
+            root = allowed_root.resolve()
+            if not path.is_relative_to(root):
+                raise ValueError(
+                    f"file case source path {raw_path!r} escapes allowed root {root}"
+                )
         rows = rows_from_file(path)
         cases = _cases_from_rows(
             rows,

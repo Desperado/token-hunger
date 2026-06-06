@@ -125,3 +125,21 @@ cases:
     config = load_config(cfg)
     assert len(config.cases) == 1
     assert config.cases[0].expect == "hello"
+
+
+def test_file_source_allowed_root_rejects_symlink_escape(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text(
+        json.dumps({"input": "secret", "expect": "secret"}) + "\n",
+        encoding="utf-8",
+    )
+    (root / "cases.jsonl").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="escapes allowed root"):
+        load_cases(
+            {"source": "file", "path": "cases.jsonl"},
+            base_dir=root,
+            allowed_root=root,
+        )

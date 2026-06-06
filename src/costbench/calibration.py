@@ -64,13 +64,33 @@ def _row_id(row: dict, id_field: str) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
 
 
+def _resolve_input_path(raw: Any, config_dir: Path, allowed_root: Path) -> Path:
+    if not isinstance(raw, (str, Path)) or not str(raw):
+        raise ValueError("calibration input path must be a non-empty string")
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = config_dir / candidate
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(allowed_root):
+        raise ValueError(
+            f"calibration input path {str(raw)!r} escapes allowed root {allowed_root}"
+        )
+    return resolved
+
+
 def import_calibration(
     path: str | Path,
     *,
     history_path: Optional[str | Path] = None,
+    allowed_root: Optional[str | Path] = None,
 ) -> CalibrationImportResult:
     """Load a calibration YAML and bind matching rows to one benchmark."""
     config_path = Path(path).resolve()
+    root = (
+        Path(allowed_root).resolve()
+        if allowed_root is not None
+        else Path.cwd().resolve()
+    )
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError("calibration config root must be a mapping")
@@ -82,14 +102,10 @@ def import_calibration(
     if not source_raw:
         raise ValueError("calibration config needs a 'source' path")
 
-    benchmark_path = Path(benchmark_raw)
-    source_path = Path(source_raw)
-    if not benchmark_path.is_absolute():
-        benchmark_path = config_path.parent / benchmark_path
-    if not source_path.is_absolute():
-        source_path = config_path.parent / source_path
+    benchmark_path = _resolve_input_path(benchmark_raw, config_path.parent, root)
+    source_path = _resolve_input_path(source_raw, config_path.parent, root)
 
-    benchmark = load_config(benchmark_path)
+    benchmark = load_config(benchmark_path, allowed_root=root)
     target_ids = {target.id for target in benchmark.targets}
     rows = rows_from_file(source_path)
 
