@@ -168,7 +168,11 @@ def test_e2b_target_stages_input_and_finalizes_cost_on_close(monkeypatch):
     assert out.text == "sandbox-out"
     # honest basis: seconds are observed, the rate is user-declared
     assert out.cost_basis == "e2b-seconds × declared-rate"
-    assert "hello" in _FakeSandbox.last.files_written["/tmp/costbench_input"]
+    # input is staged to a unique /tmp path per case (reused-sandbox safe)
+    staged = _FakeSandbox.last.files_written
+    assert len(staged) == 1
+    [(path, content)] = staged.items()
+    assert path.startswith("/tmp/costbench_input_") and "hello" in content
     # cost is finalized from the sandbox's full lifetime at close(), not per call
     assert out.cost is None
     assert _FakeSandbox.last.killed is False
@@ -280,6 +284,22 @@ def test_e2b_target_reuses_pool_and_finalizes_full_lifetime_cost(monkeypatch):
     assert first.cost is not None and first.cost >= 0
     assert second.cost is not None and second.cost >= 0
     assert first.cost + second.cost > 0
+
+
+def test_e2b_reused_sandbox_stages_unique_input_paths(monkeypatch):
+    # Regression: a fixed staging path failed with "permission denied" when a
+    # pooled sandbox was reused; each case must write a distinct path.
+    _install_fake_e2b(monkeypatch)
+    target = E2BCommandTarget(_e2b_spec(sandbox_pool_size=1))
+    target.prepare(concurrency=1, case_count=2)
+    target.run(TaskSpec(), "first")
+    target.run(TaskSpec(), "second")
+    target.close()
+
+    assert len(_FakeSandbox.instances) == 1  # the same sandbox was reused
+    staged = _FakeSandbox.instances[0].files_written
+    assert len(staged) == 2  # one fresh input file per case, never reopened
+    assert all(p.startswith("/tmp/costbench_input_") for p in staged)
 
 
 def test_e2b_target_pool_is_capped_at_ten():
