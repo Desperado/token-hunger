@@ -151,6 +151,7 @@ function App() {
 
   const run = () => {
     if (running || activeIds.length === 0) return;
+    if (boot && boot.demo) return; // read-only demo: running is disabled server-side too
     const payload = { task, targets: activeIds, cases, concurrency: t.concurrency };
     setRunning(true); setRunErr(null); setResults(null); setRunProgress(null);
     CostbenchAPI.run(payload, (event) => {
@@ -175,6 +176,7 @@ function App() {
 
   const doSuggest = () => {
     if (suggesting) return;
+    if (boot && boot.demo) return; // case suggestion calls a model; disabled in demo
     setSuggesting(true); setSuggestErr(null);
     CostbenchAPI.suggestCases({ task, n: Math.max(8, Math.min(cases.length || 10, 16)) })
       .then((d) => setSuggestion(d))
@@ -202,6 +204,7 @@ function App() {
   const classes = classSplit(cases); // generic expected-label split (or null)
   const meta = (runMeta || boot.meta);
   const hasRun = !!results;
+  const demo = !!boot.demo;
 
   return (
     <React.Fragment>
@@ -222,6 +225,13 @@ function App() {
       </header>
 
       <main className="cb-main">
+        {demo && (
+          <div className="cb-demobanner" role="note">
+            <Icon name="spark" size={14} /> <b>Read-only demo.</b> Explore models, cases, and live cost
+            <em> estimates</em> — including Claude Fable 5. Running benchmarks is disabled here because it spends real
+            provider credits; <span className="mono">pip install costbench &amp;&amp; costbench serve</span> to run locally.
+          </div>
+        )}
         <Hero task={task} setTask={editTask} examples={examples} exampleId={exampleId} onPickExample={pickExample} />
         <RunBar
           nTargets={activeRows.length}
@@ -237,6 +247,7 @@ function App() {
           running={running}
           hasRun={hasRun}
           progress={runProgress}
+          demo={demo}
         />
         {runErr && <div className="cb-runerr">Run failed: {runErr}</div>}
 
@@ -263,6 +274,7 @@ function App() {
           onConfirm={confirmSuggest}
           onRegenerate={doSuggest}
           onDiscard={discardSuggest}
+          demo={demo}
         />
 
         <div className="cb-gap" />

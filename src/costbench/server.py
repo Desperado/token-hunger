@@ -40,6 +40,18 @@ MAX_RUNS = 10_000
 MAX_TEXT_LENGTH = 100_000
 WEB_CHECKS = {"exact", "contains", "regex", "numeric"}
 
+# Public read-only demo. When on, the server may bind a non-loopback host and
+# accepts any origin, but the endpoints that SPEND provider credits
+# (/api/run, /api/run-stream, /api/suggest-cases) are refused. Only the keyless,
+# offline surface — the UI, /api/bootstrap, and /api/estimate — is exposed.
+_DEMO_MODE = False
+_DEMO_BLOCKED = ("/api/run", "/api/run-stream", "/api/suggest-cases")
+_DEMO_BLOCKED_MESSAGE = (
+    "Running benchmarks is disabled in this public demo because it spends real "
+    "provider credits. Install costbench locally to run: pip install costbench "
+    "&& costbench serve."
+)
+
 # Map a litellm-style provider prefix to the vendor label the UI styles by.
 _VENDOR_BY_PREFIX = {
     "anthropic": "Anthropic",
@@ -380,6 +392,7 @@ def bootstrap_payload() -> dict:
         "models": models,
         "connectors": _connectors_payload(examples),
         "mcpServers": _MCP,
+        "demo": _DEMO_MODE,
         "meta": {
             "nCases": len(cases),
             "configFingerprint": "cfg:" + cfg.fingerprint,
@@ -656,6 +669,11 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _request_is_local(self) -> bool:
+        # The public demo serves only keyless, read-only endpoints, so the
+        # loopback host/origin guard (a CSRF defence for the local tool) does
+        # not apply — visitors reach it over a public host by design.
+        if _DEMO_MODE:
+            return True
         host = self.headers.get("Host", "")
         if not _is_local_http_authority(host):
             self._send_json({"error": "forbidden host"}, 403)
@@ -706,6 +724,9 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._request_is_local():
             return
         path = self.path.split("?", 1)[0]
+        if _DEMO_MODE and path in _DEMO_BLOCKED:
+            self._send_json({"error": _DEMO_BLOCKED_MESSAGE, "demo": True}, 403)
+            return
         if path == "/api/run-stream":
             self._handle_run_stream()
             return
@@ -767,21 +788,33 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-def serve(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) -> None:
-    """Start the loopback-only UI server (blocking).
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    open_browser: bool = True,
+    demo: bool = False,
+) -> None:
+    """Start the UI server (blocking).
 
-    The API can spend provider credits using keys loaded into this process, so
-    it is deliberately not an unauthenticated network service.
+    By default this is loopback-only: the API can spend provider credits using
+    keys loaded into this process, so it is deliberately not an unauthenticated
+    network service. ``demo=True`` flips it into a public read-only mode that may
+    bind a non-loopback host but refuses every credit-spending endpoint — see
+    :data:`_DEMO_MODE`.
     """
+    global _DEMO_MODE
+    _DEMO_MODE = demo
     if not UI_DIR.is_dir():
         raise RuntimeError(f"UI assets not found at {UI_DIR}")
-    if not _is_loopback_host(host):
+    if not demo and not _is_loopback_host(host):
         raise ValueError(
-            "costbench serve is local-only; bind to 127.0.0.1, ::1, or localhost"
+            "costbench serve is local-only; bind to 127.0.0.1, ::1, or localhost "
+            "(or pass --demo for the public read-only mode)"
         )
     httpd = ThreadingHTTPServer((host, port), _Handler)
     url = f"http://{host}:{port}/"
-    print(f"costbench UI → {url}  (Ctrl-C to stop)")
+    mode = "read-only demo" if demo else "UI"
+    print(f"costbench {mode} → {url}  (Ctrl-C to stop)")
     if open_browser:
         try:
             import webbrowser
