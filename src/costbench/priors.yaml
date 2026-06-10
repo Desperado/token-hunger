@@ -67,6 +67,11 @@ anthropic/claude-opus-4-8:
   metrics: []
   notes: "No bundled quality prior; run costbench on your own cases"
 
+anthropic/claude-fable-5:
+  task_strengths: [general, coding, math]
+  metrics: []
+  notes: "Mythos-class; no bundled quality prior, run costbench on your own cases"
+
 anthropic/claude-haiku-4-5:
   task_strengths: [general, coding]
   metrics:

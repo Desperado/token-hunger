@@ -9,7 +9,7 @@ def test_examples_have_two_levels_and_unique_ids():
 
     assert len(ids) == len(set(ids))
     assert {example["level"] for example in examples} == {1, 2, 3}
-    assert len([example for example in examples if example["level"] == 2]) == 5
+    assert len([example for example in examples if example["level"] == 2]) == 6
     assert len([example for example in examples if example["level"] == 3]) == 4
 
 

@@ -30,6 +30,7 @@ def test_bootstrap_payload_has_task_cases_and_priced_models():
     ids = {m["id"] for m in b["models"]}
     assert "anthropic/claude-haiku-4-5" in ids
     assert "anthropic/claude-opus-4-8" in ids
+    assert "anthropic/claude-fable-5" in ids
     assert "anthropic/claude-sonnet-4-6" in ids
     assert "anthropic/claude-haiku-4-6" not in ids
     assert "gemini/gemini-3.1-pro-preview" in ids

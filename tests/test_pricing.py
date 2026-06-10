@@ -67,6 +67,10 @@ def test_bundled_pricing_yaml_loads_with_local_entries():
     assert isinstance(opus, ModelPrice)
     assert opus.input_per_m == 5.0
     assert opus.output_per_m == 25.0
+    fable = prices["anthropic/claude-fable-5"]
+    assert isinstance(fable, ModelPrice)
+    assert fable.input_per_m == 10.0
+    assert fable.output_per_m == 50.0
     gemini_pro = prices["gemini/gemini-3.1-pro-preview"]
     assert isinstance(gemini_pro, ModelPrice)
     assert gemini_pro.input_per_m == 2.0
