@@ -1,0 +1,12 @@
+# Runtime dependencies for the Railway public demo (estimate + serve from source).
+#
+# Railpack installs these. A bare pyproject.toml with no lockfile did NOT trigger
+# any dependency install step (the build only set up Python), so the container
+# crashed with ModuleNotFoundError: No module named 'yaml'. requirements.txt is
+# the canonical trigger for Railpack's Python install step.
+#
+# These two are the ONLY third-party imports on the demo path (serve, bootstrap,
+# estimate). litellm and the optional tokenizers are deliberately omitted — the
+# public demo refuses every credit-spending endpoint, so it never runs a model.
+pyyaml>=6.0
+rich>=13.0
