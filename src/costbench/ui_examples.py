@@ -431,6 +431,42 @@ _DATA_HANDLING = {
     ],
 }
 
+_CONTENT_FACTCHECK = {
+    "id": "content_factcheck",
+    "name": "Article fact-check",
+    "level": 2,
+    "task": {
+        "system": (
+            "You are the fact-check stage of an automated article pipeline. You are "
+            "given a CLAIM written for an article and a SOURCE snippet retrieved for "
+            "it. Decide whether the source justifies publishing the claim, judging "
+            "ONLY against the source text — do not use outside knowledge.\n"
+            "SUPPORTED: the source directly states or entails the claim.\n"
+            "CONTRADICTED: the source directly states something that makes the claim false.\n"
+            "UNSUPPORTED: the source is about the same subject but does not contain the "
+            "specific fact the claim needs.\n"
+            "IRRELEVANT: the source is about a different subject and does not bear on the claim.\n"
+            "Reply with exactly one label: SUPPORTED, CONTRADICTED, UNSUPPORTED, or IRRELEVANT."
+        ),
+        "promptTemplate": "{input}",
+        "check": "exact",
+    },
+    "cases": [
+        {"input": "CLAIM: Python was first released in 1991.\nSOURCE: Guido van Rossum published the first version of Python, version 0.9.0, in February 1991.", "expect": "SUPPORTED"},
+        {"input": "CLAIM: The Great Barrier Reef is the world's largest coral reef system.\nSOURCE: Stretching over 2,300 kilometres, the Great Barrier Reef is the largest coral reef system on Earth and is visible from space.", "expect": "SUPPORTED"},
+        {"input": "CLAIM: A single espresso contains less caffeine per serving than a typical cup of drip coffee.\nSOURCE: A 30 ml espresso has about 63 mg of caffeine, while a 240 ml cup of drip coffee has roughly 95 to 165 mg.", "expect": "SUPPORTED"},
+        {"input": "CLAIM: The company was founded in 2010.\nSOURCE: According to its filings, the company was incorporated in 2003 and later went public in 2010.", "expect": "CONTRADICTED"},
+        {"input": "CLAIM: Sharks are mammals.\nSOURCE: Sharks are a group of fish distinguished by a cartilaginous skeleton, gills, and the absence of a swim bladder.", "expect": "CONTRADICTED"},
+        {"input": "CLAIM: Once opened, honey typically spoils within a year.\nSOURCE: Stored properly in a sealed container, honey does not spoil and can remain edible for decades.", "expect": "CONTRADICTED"},
+        {"input": "CLAIM: The 2024 phone model charges 30% faster than the previous generation.\nSOURCE: The manufacturer says the 2024 model features a redesigned battery and improved charging speeds.", "expect": "UNSUPPORTED"},
+        {"input": "CLAIM: The city's population grew by exactly 12% between 2010 and 2020.\nSOURCE: Census data show the city's population rose substantially over the 2010s, continuing a decades-long upward trend.", "expect": "UNSUPPORTED"},
+        {"input": "CLAIM: Daily aspirin lowers heart-attack risk in healthy adults under 40.\nSOURCE: The study examined daily aspirin use in adults aged 50 to 70 and reported a modest reduction in cardiovascular events.", "expect": "UNSUPPORTED"},
+        {"input": "CLAIM: Mount Kilimanjaro is the highest mountain in Africa.\nSOURCE: Lake Victoria is the largest lake in Africa by surface area, bordering Kenya, Uganda, and Tanzania.", "expect": "IRRELEVANT"},
+        {"input": "CLAIM: The novel won the Booker Prize in 2019.\nSOURCE: The author's earlier short-story collection was praised by critics for its experimental structure.", "expect": "IRRELEVANT"},
+        {"input": "CLAIM: Electric vehicles made up 18% of new car sales in Norway in 2023.\nSOURCE: Norway's national parks cover roughly 15% of its mainland territory and draw millions of visitors each year.", "expect": "IRRELEVANT"},
+    ],
+}
+
 # Level 3 cases were authored with the real Anthropic API using
 # `claude-opus-4-6`, then reviewed manually. These tasks intentionally contain
 # noise, conflicts, vague referents, and misleading correlations. The rules are
@@ -679,6 +715,7 @@ def presets(base_dir: Path | None = None) -> list[dict]:
         _BUSINESS_MATH,
         _CODE_DIAGNOSIS,
         _DATA_HANDLING,
+        _CONTENT_FACTCHECK,
         _AMBIGUITY_TRIAGE,
         _EVIDENCE_ADJUDICATION,
         _RELEASE_GOVERNANCE,

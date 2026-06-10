@@ -1,0 +1,93 @@
+# costbench example — "roast Fable 5" on the Anthropic price ladder.
+#
+# Fable 5 is the new Mythos-class tier: $10 in / $50 out per MTok — 2x Opus 4.8,
+# 10x Haiku 4.5 on input. The TokenHunger question is blunt: does that premium
+# buy you anything on YOUR tasks, or is the cheapest model that still passes good
+# enough? This set is built to ANSWER that, not to flatter the top model.
+#
+# How it roasts: a difficulty ladder of single-answer reasoning problems, output
+# forced to a bare number so the `numeric` check is fully deterministic — no
+# LLM-judge, no partial credit, no home-field advantage. Run the whole Anthropic
+# ladder side by side and read the report's cost-vs-pass frontier:
+#
+#   * If Fable passes nothing Opus/Sonnet miss  -> the premium is wasted here.
+#     TokenHunger picks the cheaper model. Fable gets roasted.
+#   * If there's a band only Fable clears       -> THAT band is what you pay for.
+#     Now you know the exact tasks worth $50/MTok, and which to route cheaper.
+#
+# Cross-vendor anchors (gpt-5, gemini-3.1-pro) keep it honest: a Mythos-class
+# price should beat strong non-Anthropic models too, or it isn't earning it.
+#
+# Run it:
+#   export ANTHROPIC_API_KEY=...
+#   export OPENAI_API_KEY=...      # drop the openai/* target if you lack a key
+#   export GEMINI_API_KEY=...      # drop the gemini/* target if you lack a key
+#   costbench run examples/fable-roast.yaml --report md
+
+name: Roast Fable 5 — does the Mythos premium pass anything cheaper models can't?
+
+targets:
+  - type: model
+    id: anthropic/claude-haiku-4-5      # floor of the ladder — cheapest
+  - type: model
+    id: anthropic/claude-sonnet-4-6
+  - type: model
+    id: anthropic/claude-opus-4-8
+  - type: model
+    id: anthropic/claude-fable-5        # the model on trial — most expensive
+  - type: model
+    id: openai/gpt-5                     # cross-vendor anchor
+  - type: model
+    id: gemini/gemini-3.1-pro-preview    # cross-vendor anchor
+
+task:
+  # Answer-only output keeps the numeric check deterministic: the check reads the
+  # FIRST number in the response, so any visible reasoning would poison it. This
+  # also strips chain-of-thought as a crutch and tests raw single-shot capability
+  # — exactly where a top tier should pull ahead if it is worth the money.
+  system: >
+    Solve the problem and reply with ONLY the final answer as a single integer.
+    No words, no units, no explanation, no leading text — just the number.
+  prompt_template: "{input}"
+
+check: numeric   # exact integer match (tolerance 0)
+
+cases:
+  # --- Rung 1: most models should clear these. If Fable misses one, that's news.
+  - input: "A train departs at 14:20 and arrives at 17:05 the same day. How many minutes is the journey?"
+    expect: 165
+  - input: "A right triangle has legs of length 9 and 12. What is the length of its hypotenuse?"
+    expect: 15
+  - input: "What is the sum of the first 30 positive even numbers?"
+    expect: 930
+
+  # --- Rung 2: the classic intuition traps that smaller models still fumble.
+  - input: "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How many cents does the ball cost?"
+    expect: 5
+  - input: "If 3 painters paint 3 walls in 3 hours, how many hours do 9 painters need to paint 9 walls at the same rate?"
+    expect: 3
+  - input: "A shop marks up an item's cost by 40%, then applies a 25% discount off the marked price. If the cost is $80, what is the final price in dollars?"
+    expect: 84
+
+  # --- Rung 3: multi-step word problems — where Sonnet starts to wobble.
+  - input: "In 5 years Maria will be twice as old as she was 8 years ago. How old is Maria now?"
+    expect: 21
+  - input: "A tank fills via pipe A in 6 hours and drains via pipe B in 9 hours. Starting empty with both pipes open, how many hours until it is full?"
+    expect: 18
+  - input: "How many integers from 1 to 200 inclusive are divisible by 3 or 5?"
+    expect: 93
+
+  # --- Rung 4: counting / number theory — the band that should separate Opus+.
+  - input: "How many distinct arrangements are there of the letters in the word BALLOON?"
+    expect: 1260
+  - input: "How many trailing zeros are there in 50! (50 factorial)?"
+    expect: 12
+  - input: "A bag holds 5 red and 3 blue marbles. Two are drawn without replacement. The probability both are red is a/b in lowest terms; what is a + b?"
+    expect: 19
+
+  # --- Rung 5: the top of the ladder — if ONLY Fable clears these, this is the
+  # band you are paying $50/MTok for. If Opus clears them too, Fable is overkill.
+  - input: "What is the remainder when 7^100 is divided by 100?"
+    expect: 1
+  - input: "In how many ways can you make 25 cents using only pennies, nickels, and dimes (any number of each, including zero)?"
+    expect: 12

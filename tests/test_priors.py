@@ -73,6 +73,7 @@ def test_bundled_seed_loads():
     priors = load_priors("seed")
     assert "openai/gpt-5" in priors
     assert priors["anthropic/claude-opus-4-8"].metrics == []
+    assert priors["anthropic/claude-fable-5"].metrics == []
     assert priors["gemini/gemini-3.1-pro-preview"].metrics == []
     assert priors["gemini/gemini-3.5-flash"].metrics == []
     assert priors["gemini/gemini-3-flash-preview"].metrics == []

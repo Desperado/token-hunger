@@ -55,6 +55,22 @@ def test_opus_4_8_uses_bundled_128k_output_limit():
     assert estimate.ceiling_source == "model_limits.yaml"
 
 
+def test_fable_5_uses_bundled_128k_output_limit():
+    pricing = PricingTable({
+        "anthropic/claude-fable-5": ModelPrice(
+            10.0,
+            50.0,
+            verified="2026-06-10",
+        )
+    })
+    cfg = _config([_model_target("anthropic/claude-fable-5")])
+
+    estimate = estimate_config(cfg, pricing, load_model_limits())[0]
+
+    assert estimate.output_ceiling == 128000
+    assert estimate.ceiling_source == "model_limits.yaml"
+
+
 @pytest.mark.parametrize(
     "model_id",
     [
