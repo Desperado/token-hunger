@@ -1,0 +1,95 @@
+# costbench example — self-hosted GPU boxes (Ollama) vs cloud, same field.
+#
+# Your gemma + qwen-coder boxes run Ollama's native /api/generate behind HTTP
+# Basic auth. costbench reaches them as `endpoint` targets with `auth_type: basic`
+# — the credential is read from the environment and NEVER written here:
+#
+#   export OLLAMA_AUTH='user:pass'      # the Basic-auth secret both boxes share
+#   export ANTHROPIC_API_KEY=...        # for the cloud baseline below
+#
+# Replace the two URLs with your hosts. The hostnames are not secrets, but if you
+# would rather not commit them, copy this file somewhere gitignored and run that.
+#
+#   costbench run examples/self-hosted-ollama.yaml --report md
+#
+# COST NOTE: an Ollama box returns text but not a billable $/token, so these
+# endpoint rows report cost basis "unknown" — correctness is compared now; the
+# amortized-GPU economics for these models live in pricing.yaml as
+# `local/gemma-27b` / `local/qwen-coder` and apply when you run them as `model`
+# targets through litellm's ollama provider (no-auth / Bearer only). Parsing
+# Ollama's eval_count to price the Basic-auth endpoint path is a separate change.
+
+name: Self-hosted Ollama (gemma + qwen-coder) vs cloud — cost per correct answer
+
+targets:
+  # --- Cloud baseline (real $/token cost) to beat ---
+  - type: model
+    id: anthropic/claude-haiku-4-5
+
+  # Cloud Qwen (Alibaba Model Studio) is a *different* thing from your
+  # self-hosted qwen-coder and is already available as a model target:
+  # - type: model
+  #   id: qwen/qwen3-max                 # needs DASHSCOPE_API_KEY
+
+  # --- Self-hosted gemma (Ollama /api/generate, HTTP Basic) ---
+  - type: endpoint
+    id: local/gemma-27b
+    url: https://YOUR-OLLAMA-HOST/api/generate
+    method: POST
+    auth_type: basic
+    auth_env: OLLAMA_AUTH
+    request_template:
+      model: gemma2:27b               # match the tag your box actually serves
+      prompt: "{input}"
+      stream: false
+    response_path: response           # Ollama returns {"response": "..."}
+    cost:
+      basis: unknown
+
+  # --- Self-hosted qwen-coder (second box, same Basic-auth secret) ---
+  - type: endpoint
+    id: local/qwen-coder
+    url: https://llm2.YOUR-DOMAIN/api/generate
+    method: POST
+    auth_type: basic
+    auth_env: OLLAMA_AUTH
+    request_template:
+      model: qwen-coder
+      prompt: "{input}"
+      stream: false
+    response_path: response
+    cost:
+      basis: unknown
+
+task:
+  # Answer-only keeps the numeric check deterministic (it reads the first number
+  # in the reply). A "what does this print" set plays to qwen-coder's strength
+  # while staying answerable by gemma and the cloud baseline.
+  system: >
+    You are given a small code snippet or arithmetic question. Reply with ONLY
+    the final result as a single integer — no words, no units, no explanation.
+  prompt_template: "{input}"
+
+check: numeric
+
+cases:
+  - input: "What is the output of: print(2 ** 10)"
+    expect: 1024
+  - input: "In Python: print(len('costbench'))"
+    expect: 9
+  - input: "What is the output of: print(sum(range(1, 11)))"
+    expect: 55
+  - input: "In Python: print(7 // 2)"
+    expect: 3
+  - input: "What does this print: print(len([x for x in range(20) if x % 3 == 0]))"
+    expect: 7
+  - input: "What is the output of: print(0x1F)"
+    expect: 31
+  - input: "In Python: print(bin(10).count('1'))"
+    expect: 2
+  - input: "What is the output of: print(max(3, 17, 9, 17, 1))"
+    expect: 17
+  - input: "What does this print: print(len('a,b,,c'.split(',')))"
+    expect: 4
+  - input: "In Python: print(sum(int(d) for d in str(2**10)))"
+    expect: 7

@@ -1,3 +1,4 @@
+import base64
 import sys
 import threading
 import time
@@ -12,10 +13,78 @@ from costbench.targets import (
     CaseOutput,
     CommandTarget,
     E2BCommandTarget,
+    EndpointTarget,
     ModelTarget,
     _E2BSandboxSlot,
     build_target,
 )
+
+
+def _endpoint_spec(**raw):
+    base = {"type": "endpoint", "id": "svc", "url": "https://box.example/api/generate"}
+    base.update(raw)
+    return TargetSpec(type="endpoint", id=base["id"], raw=base,
+                      cost=CostSpec(basis="unknown"))
+
+
+def test_endpoint_bearer_auth_is_the_default(monkeypatch):
+    monkeypatch.setenv("SVC_TOKEN", "sekret")
+    target = EndpointTarget(_endpoint_spec(auth_env="SVC_TOKEN"))
+    assert target.headers["Authorization"] == "Bearer sekret"
+
+
+def test_endpoint_basic_auth_base64_encodes_user_pass(monkeypatch):
+    monkeypatch.setenv("OLLAMA_AUTH", "user:pass")
+    target = EndpointTarget(_endpoint_spec(auth_type="basic", auth_env="OLLAMA_AUTH"))
+    expected = "Basic " + base64.b64encode(b"user:pass").decode("ascii")
+    assert target.headers["Authorization"] == expected
+
+
+def test_endpoint_unknown_auth_type_rejected():
+    with pytest.raises(ValueError, match="auth_type"):
+        EndpointTarget(_endpoint_spec(auth_type="digest", auth_env="X"))
+
+
+def test_endpoint_basic_auth_request_roundtrip(monkeypatch):
+    monkeypatch.setenv("OLLAMA_AUTH", "u:p")
+    sent = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"response": "1024"}
+
+    def fake_request(method, url, json=None, headers=None, timeout=None):
+        sent.update(method=method, url=url, json=json, headers=headers)
+        return _Resp()
+
+    monkeypatch.setitem(sys.modules, "httpx", SimpleNamespace(request=fake_request))
+
+    target = EndpointTarget(_endpoint_spec(
+        auth_type="basic",
+        auth_env="OLLAMA_AUTH",
+        request_template={"model": "qwen-coder", "prompt": "{input}", "stream": False},
+        response_path="response",
+    ))
+    out = target.run(TaskSpec(), "What is 2 ** 10?")
+
+    assert out.text == "1024"
+    assert sent["headers"]["Authorization"].startswith("Basic ")
+    assert sent["json"] == {"model": "qwen-coder", "prompt": "What is 2 ** 10?", "stream": False}
+
+
+def test_endpoint_missing_auth_env_errors_without_calling(monkeypatch):
+    monkeypatch.delenv("OLLAMA_AUTH", raising=False)
+
+    def boom(*a, **k):  # pragma: no cover - must not be reached
+        raise AssertionError("endpoint should not be called when auth env is unset")
+
+    monkeypatch.setitem(sys.modules, "httpx", SimpleNamespace(request=boom))
+    target = EndpointTarget(_endpoint_spec(auth_type="basic", auth_env="OLLAMA_AUTH"))
+    out = target.run(TaskSpec(), "x")
+    assert "OLLAMA_AUTH" in out.error and out.text == ""
 
 
 def _response(text="ok", input_tokens=100, output_tokens=100):

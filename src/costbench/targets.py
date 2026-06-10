@@ -12,6 +12,7 @@ run without them; they're only needed when you actually use a model/endpoint.
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import os
@@ -161,13 +162,31 @@ class EndpointTarget(Target):
         self.url = spec.raw["url"]
         self.method = spec.raw.get("method", "POST").upper()
         self.headers = dict(spec.raw.get("headers", {}))
+        # auth_type selects how the auth_env secret becomes an Authorization
+        # header: "bearer" (default) sends it verbatim as a token; "basic" treats
+        # it as "user:pass" and base64-encodes it (e.g. an Ollama box behind HTTP
+        # Basic). The secret only ever comes from the environment, never the YAML.
+        self.auth_type = str(spec.raw.get("auth_type", "bearer")).lower()
+        if self.auth_type not in ("bearer", "basic"):
+            raise ValueError(
+                f"unknown auth_type {self.auth_type!r}; use 'bearer' or 'basic'"
+            )
         auth_env = spec.raw.get("auth_env")
         if auth_env:
-            token = os.environ.get(auth_env, "")
-            self.headers.setdefault("Authorization", f"Bearer {token}")
+            secret = os.environ.get(auth_env, "")
+            self.headers.setdefault(
+                "Authorization", self._auth_header(self.auth_type, secret)
+            )
         self.request_template = spec.raw.get("request_template", {"input": "{input}"})
         self.response_path = spec.raw.get("response_path")
         self.cost_spec: CostSpec = spec.cost
+
+    @staticmethod
+    def _auth_header(auth_type: str, secret: str) -> str:
+        if auth_type == "basic":
+            encoded = base64.b64encode(secret.encode("utf-8")).decode("ascii")
+            return f"Basic {encoded}"
+        return f"Bearer {secret}"
 
     def run(self, task: TaskSpec, case_input: str) -> CaseOutput:
         try:
