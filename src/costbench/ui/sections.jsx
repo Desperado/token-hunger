@@ -207,7 +207,7 @@ function CaseList({ cases }) {
 }
 
 /* ---------- Cases (with two-click LLM suggestion: suggest → use/redo/discard) ---------- */
-function Cases({ cases, sourceLabel, onConnect, suggesting, suggestion, suggestErr, onSuggest, onConfirm, onRegenerate, onDiscard }) {
+function Cases({ cases, sourceLabel, onConnect, suggesting, suggestion, suggestErr, onSuggest, onConfirm, onRegenerate, onDiscard, demo }) {
   const [open, setOpen] = useState(false);
   const classes = classSplit(cases);
   const summary = classes
@@ -223,9 +223,11 @@ function Cases({ cases, sourceLabel, onConnect, suggesting, suggestion, suggestE
           <span className="ttl">{cases.length} cases</span>
           <span className="meta">· {summary} · from {sourceLabel}</span>
           <div className="cb-cases-actions" onClick={(e) => e.stopPropagation()}>
-            <button className="cb-connbtn ghost" disabled={suggesting} onClick={onSuggest}>
-              {suggesting && !reviewing ? "Suggesting…" : "✨ Suggest cases"}
-            </button>
+            {!demo && (
+              <button className="cb-connbtn ghost" disabled={suggesting} onClick={onSuggest}>
+                {suggesting && !reviewing ? "Suggesting…" : "✨ Suggest cases"}
+              </button>
+            )}
             <button className="cb-connbtn ghost" onClick={onConnect}>Connect dataset</button>
           </div>
           {!reviewing && <span className={"chev " + (open ? "open" : "")}><Icon name="chev" /></span>}
@@ -297,7 +299,7 @@ function RunProgress({ progress }) {
   );
 }
 
-function RunBar({ nTargets, nCases, est, classes, check, outCeilPerCase, outLowPerCase, concurrency, onConcurrency, onRun, running, hasRun, progress }) {
+function RunBar({ nTargets, nCases, est, classes, check, outCeilPerCase, outLowPerCase, concurrency, onConcurrency, onRun, running, hasRun, progress, demo }) {
   const [open, setOpen] = useState(false);
   const inK = est.inTok, outLow = est.outLow, outHigh = est.outHigh;
   const checkKind = typeof check === "object" ? check.type : check;
@@ -305,9 +307,10 @@ function RunBar({ nTargets, nCases, est, classes, check, outCeilPerCase, outLowP
   return (
     <div className="cb-estwrap">
       <div className="cb-runbar">
-        <button className="cb-run" onClick={onRun} disabled={running}>
+        <button className="cb-run" onClick={onRun} disabled={running || demo}
+          title={demo ? "Running is disabled in the read-only demo" : undefined}>
           <Icon name="play" size={15} />
-          {running ? "Running…" : hasRun ? "Run again" : "Run benchmark"}
+          {demo ? "Run disabled in demo" : running ? "Running…" : hasRun ? "Run again" : "Run benchmark"}
         </button>
         <label className="cb-parallel" title="How many model calls run in parallel. Higher finishes the same run faster, up to each provider's rate limit."
           style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>

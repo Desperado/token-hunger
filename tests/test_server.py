@@ -165,6 +165,48 @@ def test_server_refuses_non_loopback_bind():
     assert not server._is_allowed_origin("https://attacker.example")
 
 
+def test_bootstrap_reports_demo_flag(monkeypatch):
+    monkeypatch.setattr(server, "_DEMO_MODE", False)
+    assert server.bootstrap_payload()["demo"] is False
+    monkeypatch.setattr(server, "_DEMO_MODE", True)
+    assert server.bootstrap_payload()["demo"] is True
+
+
+def test_demo_blocks_only_spend_endpoints():
+    assert set(server._DEMO_BLOCKED) == {
+        "/api/run",
+        "/api/run-stream",
+        "/api/suggest-cases",
+    }
+    # the keyless, offline surface stays open in the public demo
+    assert "/api/estimate" not in server._DEMO_BLOCKED
+    assert "/api/bootstrap" not in server._DEMO_BLOCKED
+
+
+def test_demo_mode_allows_public_bind_and_sets_flag(monkeypatch):
+    started = {}
+
+    class _FakeHTTPD:
+        def __init__(self, addr, handler):
+            started["addr"] = addr
+
+        def serve_forever(self):
+            raise KeyboardInterrupt  # return immediately, like Ctrl-C
+
+        def server_close(self):
+            started["closed"] = True
+
+    monkeypatch.setattr(server, "ThreadingHTTPServer", _FakeHTTPD)
+    try:
+        # would raise "local-only" without demo=True (see the test above)
+        server.serve(host="0.0.0.0", port=0, open_browser=False, demo=True)
+        assert server._DEMO_MODE is True
+        assert started["addr"] == ("0.0.0.0", 0)
+        assert started["closed"] is True
+    finally:
+        server._DEMO_MODE = False
+
+
 def test_request_validation_rejects_bad_shapes_and_limits():
     valid = {
         "task": {"system": "Answer.", "promptTemplate": "{input}", "check": "exact"},

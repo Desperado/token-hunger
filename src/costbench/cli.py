@@ -322,7 +322,13 @@ def _apply_pull_params(pull_config: dict, overrides: list[str]) -> None:
 def _cmd_serve(args: argparse.Namespace) -> int:
     from .server import serve
 
-    serve(host=args.host, port=args.port, open_browser=not args.no_open)
+    demo = args.demo or os.environ.get("COSTBENCH_DEMO", "").lower() in ("1", "true", "yes")
+    serve(
+        host=args.host,
+        port=args.port,
+        open_browser=not args.no_open and not demo,
+        demo=demo,
+    )
     return 0
 
 
@@ -426,6 +432,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_serve.add_argument("--port", type=int, default=8765)
     p_serve.add_argument("--no-open", action="store_true",
                          help="do not open a browser window")
+    p_serve.add_argument("--demo", action="store_true",
+                         help="public read-only mode: may bind a non-loopback host "
+                              "but refuses credit-spending endpoints (also enabled "
+                              "by COSTBENCH_DEMO=1)")
     p_serve.set_defaults(func=_cmd_serve)
 
     p_cal = sub.add_parser(

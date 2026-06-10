@@ -193,6 +193,31 @@ body {
   padding: 40px 28px 120px;
 }
 
+.cb-demobanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+  padding: 11px 15px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cb-demobanner b { color: var(--text-1); }
+.cb-demobanner .mono {
+  font-family: monospace;
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+}
+
 .cb-section-label {
   font-size: 12px;
   font-weight: 600;

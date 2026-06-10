@@ -1,0 +1,6 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "deploy": {
+    "startCommand": "PYTHONPATH=src python -m costbench serve --demo --host 0.0.0.0 --port ${PORT:-8765} --no-open"
+  }
+}
