@@ -21,6 +21,9 @@ targets, and cases. ``run`` needs provider API keys in the environment just like
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hmac
 import json
 import ipaddress
 import re
@@ -45,6 +48,11 @@ WEB_CHECKS = {"exact", "contains", "regex", "numeric"}
 # (/api/run, /api/run-stream, /api/suggest-cases) are refused. Only the keyless,
 # offline surface — the UI, /api/bootstrap, and /api/estimate — is exposed.
 _DEMO_MODE = False
+# Optional HTTP Basic gate for the whole site (a "closed demo" password). When
+# set to "user:pass" every request must carry matching credentials or gets a 401.
+# Independent of _DEMO_MODE: use it to password a public demo, OR to fence a
+# private full-run instance. Set via --basic-auth / TOKENHUNGER_BASIC_AUTH.
+_BASIC_AUTH: str | None = None
 _DEMO_BLOCKED = ("/api/run", "/api/run-stream", "/api/suggest-cases")
 _DEMO_BLOCKED_MESSAGE = (
     "Running benchmarks is disabled in this public demo because it spends real "
@@ -243,6 +251,18 @@ def validate_request(path: str, body: Any) -> dict:
     if path == "/api/suggest-cases":
         return _validate_suggest_body(body)
     raise ValueError("unsupported endpoint")
+
+
+def _basic_auth_ok(header: str, expected: str) -> bool:
+    """Constant-time check of an ``Authorization: Basic`` header against
+    the expected ``user:pass``. False on any malformed/missing header."""
+    if not header.startswith("Basic "):
+        return False
+    try:
+        decoded = base64.b64decode(header[6:].strip()).decode("utf-8")
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        return False
+    return hmac.compare_digest(decoded, expected)
 
 
 def _is_loopback_host(host: str) -> bool:
@@ -707,7 +727,28 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, 400)
         return None
 
+    def _check_basic_auth(self) -> bool:
+        """Gate the whole site behind HTTP Basic when _BASIC_AUTH is configured.
+
+        Returns True (allow) when no password is set or the credentials match;
+        otherwise emits a 401 with a WWW-Authenticate challenge and returns False.
+        """
+        if not _BASIC_AUTH:
+            return True
+        if _basic_auth_ok(self.headers.get("Authorization", ""), _BASIC_AUTH):
+            return True
+        body = b'{"error":"authentication required"}'
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="TokenHunger"')
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return False
+
     def do_GET(self) -> None:
+        if not self._check_basic_auth():
+            return
         if not self._request_is_local():
             return
         path = self.path.split("?", 1)[0]
@@ -721,6 +762,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._serve_static(path)
 
     def do_POST(self) -> None:
+        if not self._check_basic_auth():
+            return
         if not self._request_is_local():
             return
         path = self.path.split("?", 1)[0]
@@ -793,6 +836,7 @@ def serve(
     port: int = 8765,
     open_browser: bool = True,
     demo: bool = False,
+    basic_auth: str | None = None,
 ) -> None:
     """Start the UI server (blocking).
 
@@ -800,10 +844,12 @@ def serve(
     keys loaded into this process, so it is deliberately not an unauthenticated
     network service. ``demo=True`` flips it into a public read-only mode that may
     bind a non-loopback host but refuses every credit-spending endpoint — see
-    :data:`_DEMO_MODE`.
+    :data:`_DEMO_MODE`. ``basic_auth`` ("user:pass") gates the whole site behind
+    HTTP Basic — a closed-demo password, independent of demo mode.
     """
-    global _DEMO_MODE
+    global _DEMO_MODE, _BASIC_AUTH
     _DEMO_MODE = demo
+    _BASIC_AUTH = basic_auth or None
     if not UI_DIR.is_dir():
         raise RuntimeError(f"UI assets not found at {UI_DIR}")
     if not demo and not _is_loopback_host(host):
@@ -814,7 +860,8 @@ def serve(
     httpd = ThreadingHTTPServer((host, port), _Handler)
     url = f"http://{host}:{port}/"
     mode = "read-only demo" if demo else "UI"
-    print(f"costbench {mode} → {url}  (Ctrl-C to stop)")
+    lock = " [Basic auth]" if _BASIC_AUTH else ""
+    print(f"costbench {mode}{lock} → {url}  (Ctrl-C to stop)")
     if open_browser:
         try:
             import webbrowser

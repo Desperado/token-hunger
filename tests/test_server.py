@@ -207,6 +207,39 @@ def test_demo_mode_allows_public_bind_and_sets_flag(monkeypatch):
         server._DEMO_MODE = False
 
 
+def test_basic_auth_ok_accepts_only_matching_credentials():
+    import base64
+
+    good = "Basic " + base64.b64encode(b"user:pass").decode()
+    assert server._basic_auth_ok(good, "user:pass")
+    # wrong password, wrong scheme, empty, and malformed base64 all fail
+    assert not server._basic_auth_ok("Basic " + base64.b64encode(b"user:nope").decode(), "user:pass")
+    assert not server._basic_auth_ok("Bearer " + base64.b64encode(b"user:pass").decode(), "user:pass")
+    assert not server._basic_auth_ok("", "user:pass")
+    assert not server._basic_auth_ok("Basic !!!notbase64!!!", "user:pass")
+
+
+def test_serve_sets_basic_auth_gate(monkeypatch):
+    class _FakeHTTPD:
+        def __init__(self, addr, handler):
+            pass
+
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+        def server_close(self):
+            pass
+
+    monkeypatch.setattr(server, "ThreadingHTTPServer", _FakeHTTPD)
+    try:
+        server.serve(host="0.0.0.0", port=0, open_browser=False, demo=True,
+                     basic_auth="demo:s3cret")
+        assert server._BASIC_AUTH == "demo:s3cret"
+    finally:
+        server._BASIC_AUTH = None
+        server._DEMO_MODE = False
+
+
 def test_request_validation_rejects_bad_shapes_and_limits():
     valid = {
         "task": {"system": "Answer.", "promptTemplate": "{input}", "check": "exact"},

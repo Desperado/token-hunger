@@ -323,11 +323,16 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     from .server import serve
 
     demo = args.demo or os.environ.get("COSTBENCH_DEMO", "").lower() in ("1", "true", "yes")
+    basic_auth = args.basic_auth or os.environ.get("TOKENHUNGER_BASIC_AUTH") or None
+    if basic_auth and ":" not in basic_auth:
+        console.print("[red]--basic-auth must be 'user:pass'[/red]")
+        return 2
     serve(
         host=args.host,
         port=args.port,
         open_browser=not args.no_open and not demo,
         demo=demo,
+        basic_auth=basic_auth,
     )
     return 0
 
@@ -436,6 +441,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="public read-only mode: may bind a non-loopback host "
                               "but refuses credit-spending endpoints (also enabled "
                               "by COSTBENCH_DEMO=1)")
+    p_serve.add_argument("--basic-auth", metavar="USER:PASS", default=None,
+                         help="gate the whole site behind HTTP Basic auth "
+                              "(a closed-demo password; also read from "
+                              "TOKENHUNGER_BASIC_AUTH)")
     p_serve.set_defaults(func=_cmd_serve)
 
     p_cal = sub.add_parser(
