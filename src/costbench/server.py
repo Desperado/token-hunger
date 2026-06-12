@@ -316,15 +316,25 @@ def _build_cfg(
     *,
     sandbox: dict | None = None,
     config_fingerprint: str | None = None,
+    output_tokens: int | None = None,
 ):
-    """Build a real Config from the posted task/targets/cases (no file written)."""
+    """Build a real Config from the posted task/targets/cases (no file written).
+
+    When ``output_tokens`` is given it is written onto each model target as
+    ``params.max_tokens`` so the executed run caps output at the same ceiling the
+    estimate is priced against — the estimate and the executed run stay consistent.
+    """
     from .config import build_config
 
-    targets = (
-        [_sandbox_target(sandbox)]
-        if sandbox is not None
-        else [{"type": "model", "id": tid} for tid in target_ids]
-    )
+    if sandbox is not None:
+        targets = [_sandbox_target(sandbox)]
+    else:
+        targets = []
+        for tid in target_ids:
+            target: dict = {"type": "model", "id": tid}
+            if output_tokens is not None:
+                target["params"] = {"max_tokens": output_tokens}
+            targets.append(target)
     raw = {
         "name": task.get("name", "costbench"),
         "task": {
@@ -445,6 +455,7 @@ def estimate_payload(body: dict) -> dict:
         target_ids,
         cases,
         config_fingerprint=body.get("configFingerprint"),
+        output_tokens=out_override,
     )
     pricing = load_pricing()
     limits = load_model_limits()
@@ -539,7 +550,13 @@ def run_payload(body: dict, case_progress=None) -> dict:
     cases = body.get("cases") or []
     concurrency = int(body.get("concurrency", 8))
 
-    cfg = _build_cfg(task, target_ids, cases, sandbox=body.get("sandbox"))
+    cfg = _build_cfg(
+        task,
+        target_ids,
+        cases,
+        sandbox=body.get("sandbox"),
+        output_tokens=body.get("outputTokens"),
+    )
     pricing = load_pricing()
     report = run_benchmark(
         cfg,
@@ -582,6 +599,7 @@ def run_payload(body: dict, case_progress=None) -> dict:
             "tokensOut": tokens_out,
             "perCase": per_case,
             "costRun": r.cost_per_run,
+            "costTotal": r.total_cost,  # total $ actually spent on this target
             "costSuccess": None if (cps is None or cps_inf) else cps,
             "costSuccessInf": cps_inf,
             "latency": r.mean_latency,
