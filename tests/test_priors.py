@@ -1,38 +1,44 @@
 import pytest
 
+from costbench.models import ModelCatalog, _parse_catalog_text
 from costbench.pricing import ModelPrice, PricingTable
 from costbench.priors import (
     ArtificialAnalysisSource,
-    ModelPrior,
-    _parse_priors_text,
     load_priors,
     rank_models,
 )
 
 SEED = """
 fast/cheap:
-  task_strengths: [coding]
-  metrics:
-    - name: humaneval
-      value: 80.0
-      unit: percent
-      source: https://github.com/openai/human-eval
-      license: MIT
-      verified: 2026-06-06
+  priors:
+    task_strengths: [coding]
+    metrics:
+      - name: humaneval
+        value: 80.0
+        unit: percent
+        source: https://github.com/openai/human-eval
+        license: MIT
+        verified: 2026-06-06
 slow/expensive:
-  task_strengths: [coding]
-  metrics:
-    - name: humaneval
-      value: 90.0
-      unit: percent
-      source: https://github.com/openai/human-eval
-      license: MIT
-      verified: 2026-06-06
+  priors:
+    task_strengths: [coding]
+    metrics:
+      - name: humaneval
+        value: 90.0
+        unit: percent
+        source: https://github.com/openai/human-eval
+        license: MIT
+        verified: 2026-06-06
 nopriors/local:
-  task_strengths: [coding]
-  metrics: []
-  notes: "run costbench to establish ground truth"
+  priors:
+    task_strengths: [coding]
+    metrics: []
+    notes: "run costbench to establish ground truth"
 """
+
+
+def _seed_priors():
+    return ModelCatalog(_parse_catalog_text(SEED)).priors()
 
 
 def _pricing():
@@ -44,19 +50,19 @@ def _pricing():
 
 
 def test_seed_parse():
-    priors = _parse_priors_text(SEED)
+    priors = _seed_priors()
     assert priors["fast/cheap"].metrics[0].name == "humaneval"
     assert priors["nopriors/local"].metrics == []
 
 
 def test_quality_score_normalization():
-    priors = _parse_priors_text(SEED)
+    priors = _seed_priors()
     assert priors["slow/expensive"].quality_score("coding") == pytest.approx(0.90)
     assert priors["nopriors/local"].quality_score("coding") is None
 
 
 def test_ranking_order_quality_per_dollar():
-    priors = _parse_priors_text(SEED)
+    priors = _seed_priors()
     ranked, unranked = rank_models("coding", priors, _pricing(), top=5)
     # fast/cheap has lower quality but much lower price -> higher quality-per-$
     assert ranked[0].model_id == "fast/cheap"

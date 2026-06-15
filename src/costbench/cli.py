@@ -96,7 +96,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         if t.type == "model" and t.id not in pricing:
             console.print(
                 f"[yellow]warning:[/yellow] no price for {t.id!r} in the pricing "
-                f"table — its cost will show as unknown. Add it to pricing.yaml "
+                f"table — its cost will show as unknown. Add it to models.yaml "
                 f"or a 'pricing:' block in your config."
             )
 
@@ -201,7 +201,7 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
         if t.type == "model" and t.id not in pricing:
             console.print(
                 f"[yellow]warning:[/yellow] no price for {t.id!r} in the pricing "
-                f"table — its cost will show as unknown. Add it to pricing.yaml "
+                f"table — its cost will show as unknown. Add it to models.yaml "
                 f"or a 'pricing:' block in your config."
             )
 
@@ -404,7 +404,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_sug.add_argument("--config",
                        help="benchmark config to classify with an analyzer model")
     p_sug.add_argument("--analyzer-model",
-                       help="opt-in LiteLLM model for task analysis, e.g. qwen/qwen3.5-flash")
+                       help="opt-in LiteLLM model for task analysis, e.g. qwen/qwen3.5-flash or qwen/qwen3.7-plus")
     p_sug.add_argument("--priors-source", default="seed",
                        choices=["seed", "artificialanalysis"])
     p_sug.add_argument("--top", type=int, default=5)

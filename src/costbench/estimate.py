@@ -84,7 +84,7 @@ def _resolve_output_ceiling(
     if entry and entry.get("max_output_tokens") is not None:
         return _positive_ceiling(
             entry["max_output_tokens"],
-            "model_limits.yaml",
+            "models.yaml",
         )
     return DEFAULT_MAX_OUTPUT_TOKENS, f"default ({DEFAULT_MAX_OUTPUT_TOKENS})"
 
@@ -132,7 +132,7 @@ def _estimate_model_target(
             per_case_low=None,
             per_case_high=None,
             note=f"no price for {spec.id!r} in the pricing table — add it to "
-            f"pricing.yaml or a 'pricing:' block to estimate this target.",
+            f"models.yaml or a 'pricing:' block to estimate this target.",
         )
     price = _apply_infra(price, spec)
 

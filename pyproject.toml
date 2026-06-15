@@ -53,9 +53,7 @@ Methodology = "https://github.com/Desperado/token-hunger/blob/master/METHODOLOGY
 packages = ["src/costbench"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/costbench/pricing.yaml" = "costbench/pricing.yaml"
-"src/costbench/model_limits.yaml" = "costbench/model_limits.yaml"
-"src/costbench/priors.yaml" = "costbench/priors.yaml"
+"src/costbench/models.yaml" = "costbench/models.yaml"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

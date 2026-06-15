@@ -52,7 +52,7 @@ def test_opus_4_8_uses_bundled_128k_output_limit():
     estimate = estimate_config(cfg, pricing, load_model_limits())[0]
 
     assert estimate.output_ceiling == 128000
-    assert estimate.ceiling_source == "model_limits.yaml"
+    assert estimate.ceiling_source == "models.yaml"
 
 
 def test_fable_5_uses_bundled_128k_output_limit():
@@ -68,7 +68,7 @@ def test_fable_5_uses_bundled_128k_output_limit():
     estimate = estimate_config(cfg, pricing, load_model_limits())[0]
 
     assert estimate.output_ceiling == 128000
-    assert estimate.ceiling_source == "model_limits.yaml"
+    assert estimate.ceiling_source == "models.yaml"
 
 
 @pytest.mark.parametrize(
@@ -87,7 +87,7 @@ def test_gemini_3_models_use_bundled_64k_output_limit(model_id):
     estimate = estimate_config(cfg, pricing, load_model_limits())[0]
 
     assert estimate.output_ceiling == 65536
-    assert estimate.ceiling_source == "model_limits.yaml"
+    assert estimate.ceiling_source == "models.yaml"
 
 
 def test_unpriced_model_flagged():

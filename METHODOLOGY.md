@@ -56,7 +56,7 @@ request cost =
   + output tokens * output USD per token
 ```
 
-Prices come from the versioned `pricing.yaml` table or explicit configuration
+Prices come from the versioned `models.yaml` catalog or explicit configuration
 overrides. Each built-in entry includes a verification date and source.
 
 For self-hosted model entries, cost is derived from total observed tokens,
