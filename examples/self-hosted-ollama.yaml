@@ -14,7 +14,7 @@
 #
 # COST NOTE: an Ollama box returns text but not a billable $/token, so these
 # endpoint rows report cost basis "unknown" — correctness is compared now; the
-# amortized-GPU economics for these models live in pricing.yaml as
+# amortized-GPU economics for these models live in models.yaml as
 # `local/gemma-27b` / `local/qwen-coder` and apply when you run them as `model`
 # targets through litellm's ollama provider (no-auth / Bearer only). Parsing
 # Ollama's eval_count to price the Basic-auth endpoint path is a separate change.
@@ -29,7 +29,7 @@ targets:
   # Cloud Qwen (Alibaba Model Studio) is a *different* thing from your
   # self-hosted qwen-coder and is already available as a model target:
   # - type: model
-  #   id: qwen/qwen3-max                 # needs DASHSCOPE_API_KEY
+  #   id: qwen/qwen3.7-max                 # needs DASHSCOPE_API_KEY
 
   # --- Self-hosted gemma (Ollama /api/generate, HTTP Basic) ---
   - type: endpoint

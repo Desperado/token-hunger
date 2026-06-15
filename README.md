@@ -154,7 +154,7 @@ locally available tokenizer (`pip install -e ".[tokenizers]"`) and an
 over-estimate-safe heuristic otherwise, then prices a range:
 
 - **input cost** is tokenized from messages, framing, and configured schemas;
-- **output cost** is a worst-case ceiling from `max_tokens`/`model_limits.yaml`,
+- **output cost** is a worst-case ceiling from `max_tokens`/`models.yaml`,
   or a calibrated p50–p90 range once you have run history.
 
 ```bash
@@ -191,7 +191,7 @@ You can also opt in to task analysis by a cheap LiteLLM model:
 pip install -e ".[models]"
 costbench suggest \
   --config benchmark.yaml \
-  --analyzer-model qwen/qwen3.5-flash
+  --analyzer-model qwen/qwen3.5-flash   # or qwen/qwen3.7-plus
 ```
 
 The analyzer returns:
@@ -234,7 +234,7 @@ costbench run benchmark.yaml --report html --out report.html
 ```
 
 Model calls use LiteLLM. Cost is computed independently from the transparent
-[`pricing.yaml`](src/costbench/pricing.yaml) table committed in this repository.
+[`models.yaml`](src/costbench/models.yaml) catalog committed in this repository.
 
 ## Compare Any API
 
@@ -335,7 +335,7 @@ configurations.
 Self-hosted models (e.g. `local/gemma-27b`, `local/qwen-coder`) have no vendor
 `$/token` price. costbench prices them by **amortized GPU time** — a distinct
 cost basis (`amortized GPU (batch 1)`) that is never blended with vendor rates.
-The defaults in `pricing.yaml` are conservative (batch-size-1, over-estimate-
+The defaults in `models.yaml` are conservative (batch-size-1, over-estimate-
 safe); override them for your own hardware per target:
 
 ```yaml

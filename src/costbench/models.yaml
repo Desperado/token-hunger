@@ -1,0 +1,488 @@
+# costbench model catalog — single source of truth for bundled models.
+#
+# Keys match LiteLLM model ids (provider/model). Each entry may include:
+#   pricing  — USD per 1M tokens (or amortized_gpu for self-hosted)
+#   limits   — max_output_tokens / context_window for cost ceilings
+#   priors   — illustrative quality seed data for `costbench suggest`
+#
+# THIS IS THE COST CREDIBILITY OF THE TOOL. Every cost number costbench prints
+# is computed from these values. Prices change often — each entry carries a
+# `verified` date. TREAT ANY ENTRY AS STALE UNTIL YOU HAVE CHECKED IT against
+# the provider's current docs. Updating this file is the easiest way to contribute.
+#
+# Priors are SYNTHETIC PLACEHOLDERS unless marked otherwise — see docs/PRIORS.md.
+# TODO(v2): cache-hit / batch / retry overhead modeling (over-estimate-safe v1).
+anthropic/claude-fable-5:
+  pricing:
+    input: 10.0
+    output: 50.0
+    verified: 2026-06-10
+    source: https://platform.claude.com/docs/en/about-claude/pricing
+  limits:
+    max_output_tokens: 128000
+    context_window: 1000000
+    verified: 2026-06-10
+    source: https://platform.claude.com/docs/en/about-claude/models
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics: []
+    notes: Mythos-class; no bundled quality prior, run costbench on your own cases
+anthropic/claude-haiku-4-5:
+  pricing:
+    input: 1.0
+    output: 5.0
+    verified: 2026-06-06
+    source: https://platform.claude.com/docs/en/about-claude/pricing
+  limits:
+    max_output_tokens: 64000
+    context_window: 200000
+    verified: 2026-06-06
+    source: https://platform.claude.com/docs/en/about-claude/models
+  priors:
+    task_strengths:
+    - general
+    - coding
+    metrics:
+    - name: humaneval
+      value: 82.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    notes: ILLUSTRATIVE seed — replace with real, sourced numbers before use
+anthropic/claude-opus-4-7:
+  pricing:
+    input: 5.0
+    output: 25.0
+    verified: 2026-06-06
+    source: https://platform.claude.com/docs/en/about-claude/pricing
+  limits:
+    max_output_tokens: 32000
+    context_window: 200000
+    verified: 2026-06-06
+    source: https://platform.claude.com/docs/en/about-claude/models
+anthropic/claude-opus-4-8:
+  pricing:
+    input: 5.0
+    output: 25.0
+    verified: 2026-06-06
+    source: https://platform.claude.com/docs/en/about-claude/models
+  limits:
+    max_output_tokens: 128000
+    context_window: 1000000
+    verified: 2026-06-06
+    source: https://platform.claude.com/docs/en/about-claude/models
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics: []
+    notes: No bundled quality prior; run costbench on your own cases
+anthropic/claude-sonnet-4-6:
+  pricing:
+    input: 3.0
+    output: 15.0
+    verified: 2026-06-06
+    source: https://platform.claude.com/docs/en/about-claude/pricing
+  limits:
+    max_output_tokens: 64000
+    context_window: 1000000
+    verified: 2026-06-06
+    source: https://platform.claude.com/docs/en/about-claude/models
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics:
+    - name: mmlu_pro
+      value: 86.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    - name: humaneval
+      value: 93.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    notes: ILLUSTRATIVE seed — replace with real, sourced numbers before use
+deepseek/deepseek-v4-flash:
+  pricing:
+    input: 0.14
+    output: 0.28
+    verified: 2026-06-06
+    source: https://api-docs.deepseek.com/quick_start/pricing
+  limits:
+    max_output_tokens: 8192
+    context_window: 131072
+    verified: 2026-06-06
+    source: https://api-docs.deepseek.com/quick_start/pricing
+deepseek/deepseek-v4-pro:
+  pricing:
+    input: 0.435
+    output: 0.87
+    verified: 2026-06-06
+    source: https://api-docs.deepseek.com/quick_start/pricing
+    note: 75% promo through May 2026 NOT applied; this is the over-estimate-safe standard rate
+  limits:
+    max_output_tokens: 8192
+    context_window: 131072
+    verified: 2026-06-06
+    source: https://api-docs.deepseek.com/quick_start/pricing
+  priors:
+    task_strengths:
+    - coding
+    - math
+    - general
+    metrics:
+    - name: humaneval
+      value: 90.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    - name: mmlu_pro
+      value: 84.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    notes: ILLUSTRATIVE seed — replace with real, sourced numbers before use
+gemini/gemini-2.5-flash:
+  pricing:
+    input: 0.3
+    output: 2.5
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/pricing
+  limits:
+    max_output_tokens: 65536
+    context_window: 1048576
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/models
+gemini/gemini-2.5-pro:
+  pricing:
+    input: 1.25
+    output: 10.0
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/pricing
+  limits:
+    max_output_tokens: 65536
+    context_window: 1048576
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/models
+  priors:
+    task_strengths:
+    - general
+    - math
+    metrics:
+    - name: mmlu_pro
+      value: 85.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    notes: ILLUSTRATIVE seed — replace with real, sourced numbers before use
+gemini/gemini-3-flash-preview:
+  pricing:
+    input: 0.5
+    output: 3.0
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/pricing
+  limits:
+    max_output_tokens: 65536
+    context_window: 1048576
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/models/gemini
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics: []
+    notes: Preview model; no bundled quality prior, run costbench on your own cases
+gemini/gemini-3.1-flash-lite:
+  pricing:
+    input: 0.25
+    output: 1.5
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/pricing
+  limits:
+    max_output_tokens: 65536
+    context_window: 1048576
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/models/gemini
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics: []
+    notes: No bundled quality prior; run costbench on your own cases
+gemini/gemini-3.1-pro-preview:
+  pricing:
+    input: 2.0
+    output: 12.0
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/pricing
+  limits:
+    max_output_tokens: 65536
+    context_window: 1048576
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/models/gemini
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics: []
+    notes: Preview model; no bundled quality prior, run costbench on your own cases
+gemini/gemini-3.5-flash:
+  pricing:
+    input: 1.5
+    output: 9.0
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/pricing
+  limits:
+    max_output_tokens: 65536
+    context_window: 1048576
+    verified: 2026-06-06
+    source: https://ai.google.dev/gemini-api/docs/models/gemini
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics: []
+    notes: No bundled quality prior; run costbench on your own cases
+local/gemma-27b:
+  pricing:
+    basis: amortized_gpu
+    gpu_hourly_rate: 0.6
+    throughput_tokens_per_sec: 2800
+    verified: 2026-06-06
+    source: https://www.spheron.network/blog/gpu-cost-per-token-benchmark-llm-inference-2026/
+    note: INT4/vLLM continuous batching. batch size 1 worst-case is over-estimate-safe; override gpu_hourly_rate/throughput
+      for your hardware.
+  priors:
+    task_strengths:
+    - general
+    metrics: []
+    notes: no reliable public priors for self-hosted/quantized config — run costbench to establish ground
+      truth.
+local/qwen-coder:
+  pricing:
+    basis: amortized_gpu
+    gpu_hourly_rate: 1.07
+    throughput_tokens_per_sec: 60
+    verified: 2026-06-06
+    source: https://pinggy.io/blog/best_open_source_self_hosted_llms_for_coding/
+    note: Self-hosted, batch size 1 worst-case. Throughput varies wildly by quant/serving stack; override.
+  priors:
+    task_strengths:
+    - coding
+    metrics: []
+    notes: no reliable public priors for self-hosted/quantized config — run costbench to establish ground
+      truth.
+mistral/devstral-2:
+  pricing:
+    input: 0.4
+    output: 2.0
+    verified: 2026-06-06
+    source: https://mistral.ai/pricing/
+mistral/ministral-3b:
+  pricing:
+    input: 0.1
+    output: 0.1
+    verified: 2026-06-06
+    source: https://mistral.ai/pricing/
+mistral/mistral-large-3:
+  pricing:
+    input: 0.5
+    output: 1.5
+    verified: 2026-06-06
+    source: https://mistral.ai/pricing/
+  limits:
+    max_output_tokens: 8192
+    context_window: 131072
+    verified: 2026-06-06
+    source: https://docs.mistral.ai/getting-started/models/models_overview/
+  priors:
+    task_strengths:
+    - general
+    - coding
+    metrics:
+    - name: humaneval
+      value: 84.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    notes: ILLUSTRATIVE seed — replace with real, sourced numbers before use
+mistral/mistral-medium-3.5:
+  pricing:
+    input: 1.5
+    output: 7.5
+    verified: 2026-06-06
+    source: https://mistral.ai/pricing/
+  limits:
+    max_output_tokens: 8192
+    context_window: 131072
+    verified: 2026-06-06
+    source: https://docs.mistral.ai/getting-started/models/models_overview/
+mistral/mistral-small-4:
+  pricing:
+    input: 0.1
+    output: 0.3
+    verified: 2026-06-06
+    source: https://mistral.ai/pricing/
+  limits:
+    max_output_tokens: 8192
+    context_window: 131072
+    verified: 2026-06-06
+    source: https://docs.mistral.ai/getting-started/models/models_overview/
+openai/gpt-5:
+  pricing:
+    input: 1.25
+    output: 10.0
+    verified: 2026-06-06
+    source: https://platform.openai.com/docs/pricing
+  limits:
+    max_output_tokens: 16384
+    context_window: 400000
+    verified: 2026-06-06
+    source: https://platform.openai.com/docs/models
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics:
+    - name: mmlu_pro
+      value: 87.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    - name: humaneval
+      value: 92.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    notes: ILLUSTRATIVE seed — replace with real, sourced numbers before use
+openai/gpt-5-mini:
+  pricing:
+    input: 0.25
+    output: 2.0
+    verified: 2026-06-06
+    source: https://platform.openai.com/docs/pricing
+  limits:
+    max_output_tokens: 16384
+    context_window: 400000
+    verified: 2026-06-06
+    source: https://platform.openai.com/docs/models
+  priors:
+    task_strengths:
+    - general
+    - coding
+    metrics:
+    - name: humaneval
+      value: 85.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    notes: ILLUSTRATIVE seed — replace with real, sourced numbers before use
+qwen/qwen3-max:
+  pricing:
+    input: 1.2
+    output: 6.0
+    verified: 2026-06-15
+    source: https://www.alibabacloud.com/help/en/model-studio/model-pricing
+    note: legacy Qwen3 tier; superseded by qwen3.7-max
+  limits:
+    max_output_tokens: 64000
+    context_window: 262144
+    verified: 2026-06-15
+    source: https://www.alibabacloud.com/help/en/model-studio/text-generation-model
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics:
+    - name: humaneval
+      value: 88.0
+      unit: percent
+      source: illustrative placeholder — synthetic, not a measured score
+      license: n/a
+    notes: ILLUSTRATIVE seed — legacy tier; replace with real, sourced numbers before use
+qwen/qwen3.5-flash:
+  pricing:
+    input: 0.1
+    output: 0.4
+    verified: 2026-06-15
+    source: https://www.alibabacloud.com/help/en/model-studio/model-pricing
+  limits:
+    max_output_tokens: 64000
+    context_window: 1000000
+    verified: 2026-06-15
+    source: https://www.alibabacloud.com/help/en/model-studio/text-generation-model
+  priors:
+    task_strengths:
+    - general
+    - coding
+    metrics: []
+    notes: No bundled quality prior; run costbench on your own cases
+qwen/qwen3.5-plus:
+  pricing:
+    input: 0.4
+    output: 2.4
+    verified: 2026-06-15
+    source: https://www.alibabacloud.com/help/en/model-studio/model-pricing
+  limits:
+    max_output_tokens: 64000
+    context_window: 1000000
+    verified: 2026-06-15
+    source: https://www.alibabacloud.com/help/en/model-studio/text-generation-model
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics: []
+    notes: No bundled quality prior; run costbench on your own cases
+qwen/qwen3.7-max:
+  pricing:
+    input: 2.5
+    output: 7.5
+    verified: 2026-06-15
+    source: https://www.qwencloud.com/models/qwen3.7-max
+    note: 50% promo NOT applied; over-estimate-safe list rate
+  limits:
+    max_output_tokens: 65536
+    context_window: 1000000
+    verified: 2026-06-15
+    source: https://www.qwencloud.com/models/qwen3.7-max
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics: []
+    notes: No bundled quality prior; run costbench on your own cases
+qwen/qwen3.7-plus:
+  pricing:
+    input: 0.4
+    output: 1.6
+    verified: 2026-06-15
+    source: https://www.qwencloud.com/models/qwen3.7-plus
+    note: ≤256K input tier; longer inputs cost more — flat v1 uses base tier
+  limits:
+    max_output_tokens: 64000
+    context_window: 1000000
+    verified: 2026-06-15
+    source: https://www.qwencloud.com/models/qwen3.7-plus
+  priors:
+    task_strengths:
+    - general
+    - coding
+    - math
+    metrics: []
+    notes: No bundled quality prior; run costbench on your own cases

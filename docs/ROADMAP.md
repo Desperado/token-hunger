@@ -17,7 +17,7 @@ Shape:
 1. Before a real LLM call, take the rendered messages, model-visible schemas,
    and the call's output-token limit.
 2. Run the request-aware token estimator and treat the explicit output limit
-   (or the `model_limits.yaml` ceiling) as the worst-case output ceiling, using
+   (or the `models.yaml` ceiling) as the worst-case output ceiling, using
    the same request-estimate + ceiling-output range `estimate` produces.
 3. Optionally **block or warn** when the per-call ceiling exceeds a budget the
    caller sets. Over-estimate-safe: the wrapper quotes the ceiling, never a
@@ -35,7 +35,7 @@ host can read the same JSONL history file.
 Caching, batch, tool-call, and retry cost modeling are **not** modeled. These
 change cost in both directions; assuming caching/batch discounts would
 under-estimate and violate over-estimate-safe. Tracked as v2 work; see the
-`TODO(v2)` notes in `pricing.yaml` and `targets.py`.
+`TODO(v2)` notes in `models.yaml` and `targets.py`.
 
 ## Other v2 candidates
 

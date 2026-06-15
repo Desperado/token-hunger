@@ -54,13 +54,11 @@ def test_amortized_gpu_infra_override():
     assert price.gpu_hourly_rate == 1.0  # original unchanged
 
 
-def test_bundled_pricing_yaml_loads_with_local_entries():
-    from importlib import resources
+def test_bundled_catalog_loads_with_local_entries():
+    from costbench.pricing import load_pricing
 
-    text = resources.files("costbench").joinpath("pricing.yaml").read_text(
-        encoding="utf-8"
-    )
-    prices = _load_yaml_text(text)
+    table = load_pricing()
+    prices = {mid: table.get(mid) for mid in table.ids()}
     assert isinstance(prices["local/gemma-27b"], AmortizedGpuPrice)
     assert isinstance(prices["mistral/mistral-large-3"], ModelPrice)
     opus = prices["anthropic/claude-opus-4-8"]
@@ -88,5 +86,15 @@ def test_bundled_pricing_yaml_loads_with_local_entries():
     assert gemini_flash_lite.input_per_m == 0.25
     assert gemini_flash_lite.output_per_m == 1.5
     assert "gemini/gemini-3-pro-preview" not in prices
+    qwen37_max = prices["qwen/qwen3.7-max"]
+    assert isinstance(qwen37_max, ModelPrice)
+    assert qwen37_max.input_per_m == 2.50
+    assert qwen37_max.output_per_m == 7.50
+    qwen37_plus = prices["qwen/qwen3.7-plus"]
+    assert isinstance(qwen37_plus, ModelPrice)
+    assert qwen37_plus.input_per_m == 0.40
+    assert qwen37_plus.output_per_m == 1.60
+    assert "qwen/qwen-turbo" not in prices
+    assert "qwen/qwq-plus" not in prices
     # whole table fingerprints without error (covers mixed-basis canonicalization)
     PricingTable(prices)

@@ -2,8 +2,9 @@
 
 Priors are PUBLIC-benchmark starting points, NOT ground truth. The only ground
 truth is the user's own `costbench run` on their real cases. The seed dataset
-(priors.yaml) bundles only openly-licensed benchmarks + provider system-card
-numbers, each with a source + license + verified date.
+in the bundled model catalog (``models.yaml``) ships only openly-licensed
+benchmarks + provider system-card numbers, each with a source + license +
+verified date.
 
 Artificial Analysis is OPT-IN at runtime only (user's own API key, nothing
 cached to disk). The seed source is the default.
@@ -13,11 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from importlib import resources
 from pathlib import Path
 from typing import Optional, Protocol
-
-import yaml
 
 from .pricing import PricingTable
 
@@ -70,44 +68,16 @@ class ModelQualitySource(Protocol):
     def fetch_scores(self, model_ids: list[str]) -> dict[str, ModelPrior]: ...
 
 
-def _parse_priors_text(text: str) -> dict[str, ModelPrior]:
-    raw = yaml.safe_load(text) or {}
-    out: dict[str, ModelPrior] = {}
-    for mid, entry in raw.items():
-        metrics = [
-            Metric(
-                name=m["name"],
-                value=float(m["value"]),
-                unit=m.get("unit", "percent"),
-                source=m.get("source", ""),
-                license=m.get("license", ""),
-                verified=str(m.get("verified", "")),
-            )
-            for m in (entry.get("metrics") or [])
-        ]
-        out[mid] = ModelPrior(
-            model_id=mid,
-            task_strengths=list(entry.get("task_strengths") or []),
-            metrics=metrics,
-            notes=entry.get("notes", ""),
-        )
-    return out
-
-
 class SeedSource:
-    """Reads the bundled priors.yaml (default source)."""
+    """Reads priors from the bundled model catalog (default source)."""
 
     def __init__(self, path: Optional[str | Path] = None):
         self._path = path
 
     def _load_all(self) -> dict[str, ModelPrior]:
-        if self._path is not None:
-            text = Path(self._path).read_text(encoding="utf-8")
-        else:
-            text = resources.files("costbench").joinpath("priors.yaml").read_text(
-                encoding="utf-8"
-            )
-        return _parse_priors_text(text)
+        from .models import load_catalog
+
+        return load_catalog(self._path).priors()
 
     def fetch_scores(self, model_ids: list[str]) -> dict[str, ModelPrior]:
         allp = self._load_all()

@@ -68,7 +68,7 @@ The task type can be supplied manually or inferred with an opt-in analyzer:
 ```bash
 costbench suggest \
   --config benchmark.yaml \
-  --analyzer-model qwen/qwen3.5-flash
+  --analyzer-model qwen/qwen3.5-flash   # or qwen/qwen3.7-plus
 ```
 
 The analyzer calls the user-selected model through LiteLLM and returns:

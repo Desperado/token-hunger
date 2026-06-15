@@ -1,6 +1,6 @@
 """Transparent token pricing.
 
-Prices come from a committed YAML table (``pricing.yaml``), never from inside a
+Prices come from the bundled model catalog (``models.yaml``), never from inside a
 dependency. Callers can override or extend the table from their own config so a
 private/negotiated rate or a brand-new model never blocks a run.
 """
@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from importlib import resources
 from pathlib import Path
 from typing import Optional, Union
 
@@ -160,11 +159,18 @@ def _load_yaml_text(text: str) -> dict[str, Price]:
 
 
 def load_pricing(path: Optional[str | Path] = None) -> PricingTable:
-    """Load the built-in pricing table, or a custom YAML file if given."""
+    """Load pricing from the bundled catalog, or a custom YAML file if given.
+
+    A custom path may be a full ``models.yaml`` catalog or a legacy flat
+    pricing-only table (``input``/``output`` per model id).
+    """
     if path is not None:
         text = Path(path).read_text(encoding="utf-8")
-    else:
-        text = resources.files("costbench").joinpath("pricing.yaml").read_text(
-            encoding="utf-8"
-        )
-    return PricingTable(_load_yaml_text(text))
+        from .models import is_flat_pricing_yaml, load_catalog
+
+        if is_flat_pricing_yaml(text):
+            return PricingTable(_load_yaml_text(text))
+        return load_catalog(path).pricing_table()
+    from .models import load_catalog
+
+    return load_catalog().pricing_table()

@@ -18,7 +18,7 @@ import pytest
 
 from costbench import server
 
-MODEL = "anthropic/claude-haiku-4-5"  # vendor-prefixed id from pricing.yaml
+MODEL = "anthropic/claude-haiku-4-5"  # vendor-prefixed id from models.yaml
 TASK = {"system": None, "promptTemplate": "{input}", "check": "exact"}
 CASES = [{"input": "ping", "expect": "ok"}, {"input": "ping2", "expect": "ok"}]
 

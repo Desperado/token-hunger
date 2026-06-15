@@ -14,7 +14,7 @@ truth** — the only ground truth is your own `costbench run` on your real cases
   (`ARTIFICIAL_ANALYSIS_API_KEY`) and caches nothing to disk. The runtime fetch
   is a roadmap item and currently raises a clear opt-in error.
 
-- The bundled seed dataset (`src/costbench/priors.yaml`) currently ships
+- The bundled seed dataset (`src/costbench/models.yaml`) currently ships
   **ILLUSTRATIVE PLACEHOLDER numbers only** — they are synthetic, not measured,
   and exist solely to wire the feature end-to-end. They are **not** attributed
   to any source, on purpose: a real-looking score linked to a URL that does not
@@ -41,7 +41,7 @@ do not cite them as the source of a number. See `LICENSE.priors` at the repo roo
 
 ## Seed data caveat
 
-`priors.yaml` is **illustrative seed data**. Each row is marked
+`models.yaml` is **illustrative seed data**. Each row is marked
 `"ILLUSTRATIVE seed — replace with real, sourced numbers before use"`, and
 `suggest` prints a visible warning whenever it ranks on these placeholders. Every
 value MUST be replaced with a real, sourced number before any published
