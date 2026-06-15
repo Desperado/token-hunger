@@ -389,30 +389,24 @@ openai/gpt-5-mini:
       source: illustrative placeholder — synthetic, not a measured score
       license: n/a
     notes: ILLUSTRATIVE seed — replace with real, sourced numbers before use
-qwen/qwen3-max:
+qwen/qwen3.6-flash:
   pricing:
-    input: 1.2
-    output: 6.0
-    verified: 2026-06-15
+    input: 0.1
+    output: 0.4
+    verified: "unverified — carried-forward from qwen3.5-flash tier"
     source: https://www.alibabacloud.com/help/en/model-studio/model-pricing
-    note: legacy Qwen3 tier; superseded by qwen3.7-max
+    note: carried-forward flash-tier estimate; verify against the price page
   limits:
     max_output_tokens: 64000
-    context_window: 262144
+    context_window: 1000000
     verified: 2026-06-15
     source: https://www.alibabacloud.com/help/en/model-studio/text-generation-model
   priors:
     task_strengths:
     - general
     - coding
-    - math
-    metrics:
-    - name: humaneval
-      value: 88.0
-      unit: percent
-      source: illustrative placeholder — synthetic, not a measured score
-      license: n/a
-    notes: ILLUSTRATIVE seed — legacy tier; replace with real, sourced numbers before use
+    metrics: []
+    notes: No bundled quality prior; run costbench on your own cases
 qwen/qwen3.5-flash:
   pricing:
     input: 0.1
