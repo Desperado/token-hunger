@@ -20,6 +20,7 @@ function Hero({ task, setTask, examples, exampleId, onPickExample }) {
     <div>
       <div className="cb-hero">
         <h1>Don't pay frontier prices for tasks a smaller model nails.</h1>
+        <p className="cb-hero-tag">Run the benchmark. Feed the lean one.</p>
         <p>TokenHunger grades every model on the same cases and ranks them by cost per <em>correct</em> answer, so failures count against apparently cheap calls. Compare pass rate and cost per success, then choose the model that fits your quality requirements.</p>
       </div>
 

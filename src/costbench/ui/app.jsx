@@ -9,25 +9,34 @@
 const { useState, useMemo, useEffect, useRef } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "dark": false,
+  "dark": true,
   "resultsView": "table",
-  "accent": "#007aff",
+  "accent": "#ff6a1a",
   "outputTokens": 3,
   "concurrency": 12
 }/*EDITMODE-END*/;
 
 const ACCENTS = {
-  "#007aff": { accent: "#007aff", soft: "rgba(0,122,255,0.12)", text: "#007aff", darkAccent: "#0a84ff", darkText: "#409cff", darkSoft: "rgba(10,132,255,0.18)" },
-  "#30d158": { accent: "#248a3d", soft: "rgba(48,209,88,0.14)", text: "#248a3d", darkAccent: "#30d158", darkText: "#30d158", darkSoft: "rgba(48,209,88,0.18)" },
-  "#5e5ce6": { accent: "#5e5ce6", soft: "rgba(94,92,230,0.14)", text: "#5e5ce6", darkAccent: "#7d7aff", darkText: "#9b99ff", darkSoft: "rgba(94,92,230,0.22)" },
-  "#1d1d1f": { accent: "#1d1d1f", soft: "rgba(0,0,0,0.07)", text: "#1d1d1f", darkAccent: "#f5f5f7", darkText: "#f5f5f7", darkSoft: "rgba(255,255,255,0.12)" },
+  "#ff6a1a": { accent: "#ff6a1a", soft: "rgba(255,106,26,0.14)", text: "#ff6a1a", darkAccent: "#ff6a1a", darkText: "#ff6a1a", darkSoft: "rgba(255,106,26,0.16)" },
+  "#34d6a0": { accent: "#16b582", soft: "rgba(22,181,130,0.14)", text: "#16b582", darkAccent: "#34d6a0", darkText: "#34d6a0", darkSoft: "rgba(52,214,160,0.16)" },
+  "#f4f1ec": { accent: "#9a8f86", soft: "rgba(154,143,134,0.14)", text: "#9a8f86", darkAccent: "#f4f1ec", darkText: "#f4f1ec", darkSoft: "rgba(244,241,236,0.12)" },
 };
+
+const FLAME_MARK = (
+  <svg className="th-flame" width="22" height="22" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+    <circle cx="24" cy="24" r="20.5" stroke="#ff6a1a" strokeOpacity="0.42" strokeWidth="2.4" />
+    <g transform="translate(11.6 10.4) scale(1.06)">
+      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" fill="#ff6a1a" />
+      <path d="M12 13.1c-1.3 1.6-1.9 2.8-1.9 4.1a1.9 1.9 0 0 0 3.8 0c0-1.7-1.1-2.7-1.9-4.1z" fill="#34d6a0" />
+    </g>
+  </svg>
+);
 
 function useThemeEffect(t, theme) {
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute("data-theme", theme);
-    const a = ACCENTS[t.accent] || ACCENTS["#007aff"];
+    const a = ACCENTS[t.accent] || ACCENTS["#ff6a1a"];
     if (t.dark) {
       root.style.setProperty("--accent", a.darkAccent);
       root.style.setProperty("--accent-text", a.darkText);
@@ -211,8 +220,9 @@ function App() {
       <header className="cb-header">
         <div className="cb-header-inner">
           <span className="cb-wordmark">
-            <span className="dot" />TokenHunger
-            <span className="sub">lowest cost per successful result</span>
+            {FLAME_MARK}
+            <span className="wm"><span className="tk">Token</span><span className="hg">Hunger</span></span>
+            <span className="sub">cost per success, not cost per token</span>
           </span>
           <span className="cb-header-spacer" />
           <button className="cb-iconbtn" onClick={() => setDrawer(true)}>
@@ -300,7 +310,7 @@ function App() {
         <TweakRadio label="Layout" value={t.resultsView} options={["table", "chart", "cards"]} onChange={(v) => setTweak("resultsView", v)} />
         <TweakSection label="Appearance" />
         <TweakToggle label="Dark mode" value={t.dark} onChange={(v) => setTweak("dark", v)} />
-        <TweakColor label="Accent" value={t.accent} options={["#007aff", "#30d158", "#5e5ce6", "#1d1d1f"]} onChange={(v) => setTweak("accent", v)} />
+        <TweakColor label="Accent" value={t.accent} options={["#ff6a1a", "#34d6a0", "#f4f1ec"]} onChange={(v) => setTweak("accent", v)} />
         <TweakSection label="Estimate" />
         <TweakSlider label="Output ceiling" value={t.outputTokens} min={2} max={64} step={1} unit=" tok/case" onChange={(v) => setTweak("outputTokens", v)} />
       </TweaksPanel>
