@@ -534,6 +534,46 @@ body {
 .cb-pill.esc { color: var(--warn); background: var(--warn-soft); }
 .cb-pill.res { color: var(--good); background: var(--good-soft); }
 
+/* ---------- cheapest to try ---------- */
+.cb-cheapest { padding: 6px; }
+.cb-cheapest-list { list-style: none; margin: 0; padding: 0; }
+.cb-cheapest-row {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px; border-radius: 11px;
+}
+.cb-cheapest-row + .cb-cheapest-row { border-top: 0.5px solid var(--sep); }
+.cb-cheapest-row .rank {
+  width: 18px; flex-shrink: 0; text-align: center;
+  font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text-3);
+}
+.cb-cheapest-row .mid {
+  font-family: var(--mono); font-size: 13px; letter-spacing: -0.01em; color: var(--text);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cb-cheapest-row .grow { flex: 1; min-width: 8px; }
+.cb-cheapest-row .price {
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  color: var(--accent-text); white-space: nowrap; flex-shrink: 0;
+}
+.cb-cheapest-row:first-child .price { color: var(--good); }
+.cb-cheapest-foot {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 12px 8px; margin-top: 4px; border-top: 0.5px solid var(--sep);
+  font-size: 12.5px; color: var(--text-2);
+}
+.cb-cheapest-foot .grow { flex: 1; min-width: 8px; }
+.cb-cheapest-foot .spread b { color: var(--text); font-weight: 600; }
+.cb-cheapest-foot .spread .mono { font-family: var(--mono); }
+.cb-cheapest-btn {
+  appearance: none; border: 0.5px solid var(--sep); background: var(--surface-2);
+  color: var(--accent-text); font-family: inherit; font-size: 13px; font-weight: 600;
+  border-radius: 999px; padding: 7px 14px; cursor: pointer; flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 4px;
+  transition: background 0.16s var(--ease), transform 0.1s var(--ease);
+}
+.cb-cheapest-btn:hover { background: var(--accent-soft); }
+.cb-cheapest-btn:active { transform: scale(0.97); }
+
 /* ---------- results ---------- */
 .cb-results-head {
   display: flex; align-items: flex-end; gap: 16px; margin-bottom: 16px;
@@ -774,10 +814,36 @@ body {
 
 @media (max-width: 720px) {
   .cb-hero h1 { font-size: 31px; }
+  .cb-hero p { font-size: 15.5px; }
   .cb-main { padding: 28px 16px 100px; }
-  .cb-header-inner { padding: 0 16px; }
+  .cb-header-inner { padding: 0 16px; gap: 10px; }
+  /* The tagline crowds the header on phones; the run bar restates it anyway. */
+  .cb-wordmark .sub { display: none; }
   .cb-chart-row .name { width: 120px; }
   .cb-table th:nth-child(4), .cb-table td:nth-child(4) { display: none; }
+
+  /* Run bar: stack controls and let the estimate chip wrap instead of overflowing. */
+  .cb-run { width: 100%; justify-content: center; }
+  .cb-estchip { width: 100%; flex-wrap: wrap; gap: 6px 10px; }
+  .cb-estchip .meta { white-space: normal; }
+  .cb-estchip .div { display: none; }
+
+  /* Estimate detail: a four-column grid won't fit — keep Target + Est. cost. */
+  .cb-estrow { grid-template-columns: minmax(0, 1fr) 120px; }
+  .cb-estrow > :nth-child(2), .cb-estrow > :nth-child(3) { display: none; }
+
+  /* Let long status/summary rows wrap rather than spill off-screen. */
+  .cb-progress-detail { flex-wrap: wrap; }
+  .cb-progress-detail .stats { margin-left: 0; white-space: normal; }
+  .cb-cases-head { flex-wrap: wrap; }
+  .cb-cases-head .chev { margin-left: 0; }
+  .cb-cheapest-foot .spread { white-space: normal; }
+  .cb-cheapest-btn { flex: 1; justify-content: center; }
+}
+
+@media (max-width: 440px) {
+  .cb-hero h1 { font-size: 27px; }
+  .cb-cases-head .meta { width: 100%; }
 }
 
 /* ---- live states (server-wired UI) ---- */

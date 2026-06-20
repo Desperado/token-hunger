@@ -118,6 +118,11 @@ function App() {
   });
   const selectAll = () => setRemoved(new Set());
   const clearAll = () => setRemoved(new Set(models.map((r) => r.id)));
+  // Narrow the active targets to exactly `ids` (used by the Cheapest-to-try panel).
+  const selectModels = (ids) => {
+    const keep = new Set(ids);
+    setRemoved(new Set(models.filter((r) => !keep.has(r.id)).map((r) => r.id)));
+  };
 
   // ---- estimate (debounced; keyless, offline on the server) ----
   const [est, setEst] = useState(null);
@@ -260,6 +265,9 @@ function App() {
           demo={demo}
         />
         {runErr && <div className="cb-runerr">Run failed: {runErr}</div>}
+
+        <div className="cb-gap" />
+        <CheapestToTry est={est} onSelect={selectModels} />
 
         <div className="cb-gap" />
         <TargetsTree

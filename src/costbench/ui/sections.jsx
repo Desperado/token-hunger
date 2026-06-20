@@ -372,6 +372,62 @@ function RunBar({ nTargets, nCases, est, classes, check, outCeilPerCase, outLowP
   );
 }
 
+/* ---------- Cheapest to try: surface the lowest-estimated-cost models ---------- */
+function CheapestToTry({ est, onSelect }) {
+  // Reads the live keyless estimate (same rows the RunBar shows) and ranks the
+  // priced targets cheapest-first. Opaque/unpriced targets have no comparable
+  // number, so they are excluded rather than guessed at.
+  if (!est || !est.rows) return null;
+  const priced = est.rows.filter((r) => !r.opaque && r.costHigh != null);
+  if (priced.length < 2) return null;
+
+  const sorted = [...priced].sort(
+    (a, b) => (a.costHigh - b.costHigh) || (a.costLow - b.costLow)
+  );
+  const top = sorted.slice(0, 5);
+  const min = sorted[0].costHigh;
+  const max = sorted[sorted.length - 1].costHigh;
+  const spread = min > 0 ? Math.round(max / min) : null;
+  const ids = top.map((r) => r.id);
+
+  return (
+    <div>
+      <div className="cb-section-label">
+        Cheapest to try <span className="count">· lowest estimated cost first</span>
+      </div>
+      <div className="cb-card cb-cheapest">
+        <ol className="cb-cheapest-list">
+          {top.map((r, i) => (
+            <li className="cb-cheapest-row" key={r.id}>
+              <span className="rank">{i + 1}</span>
+              <VendorMark vendor={r.vendor} size={18} />
+              <span className="mid">{r.id}</span>
+              <span className="grow" />
+              <span className="price">
+                {r.costLow === r.costHigh
+                  ? fmtCost(r.costHigh)
+                  : fmtCost(r.costLow) + "–" + fmtCost(r.costHigh)}
+              </span>
+            </li>
+          ))}
+        </ol>
+        <div className="cb-cheapest-foot">
+          <span className="spread">
+            <b className="mono">{fmtCost(min)}</b> vs <b className="mono">{fmtCost(max)}</b>
+            {spread
+              ? <React.Fragment> · <b>{spread}×</b> spread across {priced.length} models</React.Fragment>
+              : <React.Fragment> · across {priced.length} models</React.Fragment>}
+          </span>
+          <span className="grow" />
+          <button className="cb-cheapest-btn" onClick={() => onSelect(ids)}>
+            Try these {top.length} <Icon name="chev" size={13} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Connectors drawer (MCP + dataset connectors) ---------- */
 function ConnectorsDrawer({ open, onClose, mcp, connectors, onInstall }) {
   return (
@@ -423,4 +479,4 @@ function ConnectorsDrawer({ open, onClose, mcp, connectors, onInstall }) {
   );
 }
 
-Object.assign(window, { Hero, TargetsTree, Cases, RunBar, ConnectorsDrawer });
+Object.assign(window, { Hero, TargetsTree, Cases, RunBar, CheapestToTry, ConnectorsDrawer });
