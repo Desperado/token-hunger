@@ -201,10 +201,12 @@ The analyzer returns:
 - `low`, `medium`, or `high` complexity;
 - confidence, rationale, signals, token usage, and analyzer cost when priced.
 
-This sends the task instructions and at most five bounded case inputs to the
-selected model. Expected answers, targets, credentials, and pricing are not
-sent. Analysis is never automatic; passing `--analyzer-model` is explicit
-consent to the provider call.
+This sends the system prompt, prompt template, check definition, and at most
+five truncated case inputs to the selected model. Expected answers, targets,
+credentials, and pricing are not sent. Analysis is never automatic; passing
+`--analyzer-model` is explicit consent to the provider call. Use a
+non-reasoning analyzer model — chain-of-thought output can overrun the response
+budget and fail JSON parsing.
 
 For the MVP, detected task type selects the static prior family. Complexity is
 informational and does not alter ranking until costbench has sufficient

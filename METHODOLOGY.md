@@ -119,8 +119,9 @@ substitute for production traffic measurement.
 ## Task Analysis for Suggestions
 
 Suggestion analysis is an explicit provider call, not an offline operation.
-The selected LiteLLM model receives the task instructions and a bounded sample
-of case inputs. Expected outputs and target configuration are excluded.
+The selected LiteLLM model receives the system prompt, prompt template, check
+definition, and a bounded sample of truncated case inputs. Expected outputs,
+target configuration, credentials, and pricing are excluded.
 
 The analyzer produces a broad task type for selecting the current static prior
 family, plus category and complexity metadata. Complexity is not currently a

@@ -83,6 +83,35 @@ def _analysis_payload(config: Config) -> dict[str, Any]:
     }
 
 
+def _first_json_object(text: str) -> Optional[str]:
+    """Return the first balanced ``{...}`` span, ignoring braces in strings."""
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return None
+
+
 def _json_object(text: str) -> dict[str, Any]:
     cleaned = text.strip()
     fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.DOTALL)
@@ -90,8 +119,16 @@ def _json_object(text: str) -> dict[str, Any]:
         cleaned = fenced.group(1)
     try:
         value = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise ValueError("analyzer returned invalid JSON") from exc
+    except json.JSONDecodeError:
+        # Fall back to the first balanced object if the model wrapped the JSON
+        # in prose, e.g. "Here is the classification: {...}".
+        span = _first_json_object(cleaned)
+        if span is None:
+            raise ValueError("analyzer returned invalid JSON") from None
+        try:
+            value = json.loads(span)
+        except json.JSONDecodeError as exc:
+            raise ValueError("analyzer returned invalid JSON") from exc
     if not isinstance(value, dict):
         raise ValueError("analyzer response must be a JSON object")
     return value
@@ -130,7 +167,7 @@ def _parse_analysis(
     if not isinstance(signals_raw, list):
         raise ValueError("analyzer signals must be a list")
     signals = tuple(
-        str(signal).strip()
+        str(signal).strip()[:200]
         for signal in signals_raw[:5]
         if str(signal).strip()
     )
@@ -189,7 +226,10 @@ def analyze_config(
                 {"role": "user", "content": payload},
             ],
             temperature=0,
-            max_tokens=300,
+            # The JSON verdict is tiny; the headroom only guards against
+            # truncation. Use a non-reasoning analyzer model — chain-of-thought
+            # output can still overrun this and fail JSON parsing.
+            max_tokens=512,
         )
         content = response.choices[0].message.content or ""
         usage = getattr(response, "usage", None)

@@ -235,9 +235,10 @@ def _cmd_suggest(args: argparse.Namespace) -> int:
             raise ValueError("--analyzer-model requires --config")
         config = load_config(args.config)
         console.print(
-            f"[yellow]analysis disclosure:[/yellow] sending task instructions "
-            f"and up to 5 case inputs to {args.analyzer_model!r}; expected "
-            f"answers, target definitions, and pricing are excluded."
+            f"[yellow]analysis disclosure:[/yellow] sending the system prompt, "
+            f"prompt template, check definition, and up to 5 truncated case "
+            f"inputs to {args.analyzer_model!r}; expected answers, target "
+            f"definitions, credentials, and pricing are excluded."
         )
         analysis = analyze_config(config, args.analyzer_model, pricing=pricing)
         task_type = analysis.task_type

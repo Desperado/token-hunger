@@ -121,3 +121,54 @@ def test_analyze_config_rejects_invalid_taxonomy(monkeypatch):
 
     with pytest.raises(ValueError, match="task_type"):
         analyze_config(_config(), "qwen/test")
+
+
+def _content_response(content):
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content=content))
+        ]
+    )
+
+
+def test_analyze_config_extracts_json_from_prose(monkeypatch):
+    content = (
+        'Here is the classification: '
+        '{"task_type":"math","category":"math","complexity":"medium",'
+        '"confidence":0.7,"reason":"Arithmetic over {braced} inputs.",'
+        '"signals":["numbers"]}\nLet me know if you need more.'
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "litellm",
+        SimpleNamespace(completion=lambda **kwargs: _content_response(content)),
+    )
+
+    analysis = analyze_config(_config(), "qwen/test")
+
+    assert analysis.task_type == "math"
+    assert analysis.category == "math"
+    assert analysis.reason == "Arithmetic over {braced} inputs."
+
+
+def test_analyze_config_caps_signal_length(monkeypatch):
+    monkeypatch.setitem(
+        sys.modules,
+        "litellm",
+        SimpleNamespace(
+            completion=lambda **kwargs: _response(
+                {
+                    "task_type": "general",
+                    "category": "other",
+                    "complexity": "low",
+                    "confidence": 0.5,
+                    "reason": "Generic.",
+                    "signals": ["x" * 1000],
+                }
+            )
+        ),
+    )
+
+    analysis = analyze_config(_config(), "qwen/test")
+
+    assert len(analysis.signals[0]) == 200
