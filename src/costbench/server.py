@@ -69,6 +69,7 @@ _VENDOR_BY_PREFIX = {
     "mistral": "Mistral",
     "qwen": "Qwen",
     "deepseek": "DeepSeek",
+    "cerebras": "Cerebras",
     "local": "Self-hosted",
 }
 

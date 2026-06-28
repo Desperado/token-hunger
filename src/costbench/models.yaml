@@ -109,6 +109,52 @@ anthropic/claude-sonnet-4-6:
       source: illustrative placeholder — synthetic, not a measured score
       license: n/a
     notes: ILLUSTRATIVE seed — replace with real, sourced numbers before use
+cerebras/gemma-4-31b:
+  # Google DeepMind Gemma 4 31B (multimodal) on Cerebras Inference, ~1500 tok/s.
+  # PRIVATE PREVIEW during the Jun 2026 hackathon — Cerebras has not published a
+  # per-token price for it yet, so input/output below are an ESTIMATE. Treat as
+  # stale and re-verify at GA. Reached via the host-side cerebras/* OpenAI-compat route.
+  pricing:
+    input: 0.6
+    output: 0.9
+    verified: 2026-06-28
+    source: https://www.cerebras.ai/blog/gemma-4-on-cerebras-the-fastest-inference-is-now-multimodal
+    note: PREVIEW — no public per-token price; estimate, re-verify at GA
+  limits:
+    max_output_tokens: 32000
+    context_window: 256000
+    verified: 2026-06-28
+    source: https://ai.google.dev/gemma/docs/core/model_card_4
+  priors:
+    task_strengths:
+    - general
+    - coding
+    metrics: []
+    notes: Preview multimodal model; no bundled quality prior — run costbench on your own cases
+cerebras/gpt-oss-120b:
+  pricing:
+    input: 0.25
+    output: 0.69
+    verified: 2026-06-28
+    source: https://inference-docs.cerebras.ai/support/pricing
+    note: Cerebras publishes a blended ~$0.39/1M; in/out split is approximate
+  limits:
+    max_output_tokens: 32000
+    context_window: 131000
+    verified: 2026-06-28
+    source: https://inference-docs.cerebras.ai/models/overview
+cerebras/zai-glm-4.7:
+  pricing:
+    input: 1.2
+    output: 3.4
+    verified: 2026-06-28
+    source: https://inference-docs.cerebras.ai/support/pricing
+    note: Cerebras publishes a blended ~$2.30/1M; in/out split is approximate
+  limits:
+    max_output_tokens: 32000
+    context_window: 131000
+    verified: 2026-06-28
+    source: https://inference-docs.cerebras.ai/models/overview
 deepseek/deepseek-v4-flash:
   pricing:
     input: 0.14
