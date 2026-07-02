@@ -15,6 +15,13 @@ against apparently cheap models instead of being hidden by a low per-call price.
 
 > The command-line engine is `costbench` (see Quick Start). TokenHunger is the
 > product around it.
+>
+> **Hosted version:** [tokenhunger.com](https://tokenhunger.com) runs this
+> library (UI, example tasks, and all) pinned by git SHA. Changes merged to
+> `master` here are picked up automatically: the hosted repo's scheduled
+> `bump-costbench` workflow detects the new SHA, re-runs the host's test suite
+> against it, and opens the pin-bump PR. Merging to `master` is therefore
+> shipping — keep examples and UI in a hostable state.
 
 ## Demo
 
