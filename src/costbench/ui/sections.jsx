@@ -29,7 +29,7 @@ function Hero({ task, setTask, examples, exampleId, onPickExample }) {
           <div className="cb-example-row">
             <span className="lab">Example task</span>
             <div className="cb-level-tabs" aria-label="Example difficulty">
-              {[1, 2, 3].map((n) => (
+              {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
                   className={level === n ? "on" : ""}
@@ -46,12 +46,21 @@ function Hero({ task, setTask, examples, exampleId, onPickExample }) {
             </div>
             <span className="cb-level-note">
               {selected && selected.authoring
-                ? "Opus 4.6 authored · human reviewed"
+                ? (selected.authoring.model === "anthropic/claude-fable-5"
+                    ? "Fable 5 authored"
+                    : "Opus 4.6 authored") +
+                  (selected.authoring.reviewed
+                    ? " · human reviewed"
+                    : " · script-verified")
                 : level === 1
                   ? "Single-step fundamentals"
                   : level === 2
                     ? "Multi-rule production scenarios"
-                    : "Ambiguous, noisy frontier reasoning"}
+                    : level === 3
+                      ? "Ambiguous, noisy frontier reasoning"
+                      : level === 4
+                        ? "Layered policy + multi-step math"
+                        : "Adversarial deduction — most models slip"}
             </span>
           </div>
         )}
