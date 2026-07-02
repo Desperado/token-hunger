@@ -3,14 +3,16 @@ from costbench.ui_examples import presets
 import json
 
 
-def test_examples_have_two_levels_and_unique_ids():
+def test_examples_have_five_levels_and_unique_ids():
     examples = presets()
     ids = [example["id"] for example in examples]
 
     assert len(ids) == len(set(ids))
-    assert {example["level"] for example in examples} == {1, 2, 3}
+    assert {example["level"] for example in examples} == {1, 2, 3, 4, 5}
     assert len([example for example in examples if example["level"] == 2]) == 6
     assert len([example for example in examples if example["level"] == 3]) == 4
+    assert len([example for example in examples if example["level"] == 4]) == 2
+    assert len([example for example in examples if example["level"] == 5]) == 2
 
 
 def test_advanced_examples_are_substantial_and_deterministically_gradable():
@@ -43,6 +45,21 @@ def test_level_three_examples_record_opus_authoring_provenance():
         and example["authoring"]["validation"]["cases"] == 12
         and example["authoring"]["validation"]["passes"] >= 11
         for example in level_three
+    )
+
+
+def test_level_four_and_five_record_fable_authoring_provenance():
+    hard = [example for example in presets() if example["level"] >= 4]
+
+    assert len(hard) == 4
+    assert all(
+        example["authoring"]["model"] == "anthropic/claude-fable-5"
+        # Ground truths were independently re-derived at authoring time; every
+        # case must have passed its verification pass before shipping.
+        and example["authoring"]["verification"]["cases"] == len(example["cases"])
+        and example["authoring"]["verification"]["passes"]
+        == example["authoring"]["verification"]["cases"]
+        for example in hard
     )
 
 

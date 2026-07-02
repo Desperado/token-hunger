@@ -669,6 +669,210 @@ _ROOT_CAUSE = {
 }
 
 
+# Level 4 tasks layer explicit policy on top of multi-step arithmetic: the
+# rules are stated in full, but the decisive fact is buried under distractors
+# (exempt maintenance, staging noise, tier boundaries, role inheritance) and a
+# single skipped step flips the answer. Level 5 tasks are adversarial
+# multi-step deduction — most models fail at least a few cases. Both levels
+# were authored with Claude Fable 5; every ground truth was re-derived
+# independently (Decimal-arithmetic / elimination scripts for the numeric
+# tasks, a full rule trace for the label tasks) before being committed.
+_SLA_CREDITS = {
+    "id": "sla_credits",
+    "name": "SLA credit calculation",
+    "level": 4,
+    "authoring": {
+        "model": "anthropic/claude-fable-5",
+        "reviewed": False,
+        "verification": {
+            "date": "2026-07-02",
+            "method": "decimal-arithmetic script",
+            "cases": 12,
+            "passes": 12,
+        },
+    },
+    "task": {
+        "system": (
+            "You compute contractual SLA service credits. Apply these rules exactly:\n"
+            "1. Monthly uptime % = (minutes in month - countable downtime) / minutes "
+            "in month x 100.\n"
+            "2. Countable downtime is unplanned PRODUCTION downtime only. Scheduled "
+            "maintenance is exempt only if it was announced at least 24 hours in "
+            "advance AND performed inside the approved maintenance window; otherwise "
+            "every maintenance minute counts. Staging/test incidents never count.\n"
+            "3. Credit tiers on the monthly fee: uptime below 99.9% earns a 10% "
+            "credit; below 99.0% earns 25%; below 95.0% earns 50%. Exactly one tier "
+            "applies - the deepest one breached. Uptime at or above 99.9% earns no "
+            "credit, and a tier boundary is not a breach (exactly 99.0% is in the "
+            "10% tier).\n"
+            "4. Reply with ONLY the credit in dollars as a plain number - no currency "
+            "symbol, commas, or words. Reply 0 if no credit is due."
+        ),
+        "promptTemplate": "SLA report:\n{input}",
+        "check": {"type": "numeric", "tolerance": 0.01},
+    },
+    "cases": [
+        {"input": "Monthly fee $4,000. The month has 43,200 minutes. One unplanned production outage lasted 50 minutes. No maintenance occurred.", "expect": 400},
+        {"input": "Monthly fee $2,500. The month has 43,200 minutes. One unplanned production outage lasted 40 minutes.", "expect": 0},
+        {"input": "Monthly fee $7,200. The month has 43,200 minutes. Downtime totaled 120 minutes: 90 minutes was scheduled maintenance announced 48 hours in advance and performed inside the approved window; the remaining 30 minutes was an unplanned outage.", "expect": 0},
+        {"input": "Monthly fee $6,000. The month has 43,200 minutes. A 90-minute maintenance job ran inside the approved window but was announced only 12 hours in advance; separately, an unplanned outage lasted 30 minutes.", "expect": 600},
+        {"input": "Monthly fee $8,000. The month has 43,200 minutes. Unplanned production downtime totaled 600 minutes.", "expect": 2000},
+        {"input": "Monthly fee $3,000. The month has 43,200 minutes. A failed migration caused 2,400 minutes of unplanned production downtime.", "expect": 1500},
+        {"input": "Monthly fee $5,000. The month has 43,200 minutes. Unplanned production downtime totaled exactly 432 minutes.", "expect": 500},
+        {"input": "Monthly fee $1,200. The month has 43,200 minutes. Three unplanned production outages lasted 20, 15, and 12 minutes.", "expect": 120},
+        {"input": "Monthly fee $10,000. The month has 43,200 minutes. Unplanned production downtime totaled 1,728 minutes.", "expect": 2500},
+        {"input": "Monthly fee $9,500. The month has 43,200 minutes. The staging environment was down for 500 minutes; production had a single unplanned outage of 10 minutes.", "expect": 0},
+        {"input": "Monthly fee $4,400. The month has 44,640 minutes. Unplanned production downtime totaled 500 minutes.", "expect": 1100},
+        {"input": "Monthly fee $9,000. The month has 43,200 minutes. A 200-minute maintenance job was announced 72 hours in advance but ran outside the approved window. No other downtime.", "expect": 900},
+    ],
+}
+
+_ACCESS_ADJUDICATION = {
+    "id": "access_adjudication",
+    "name": "Access-request adjudication",
+    "level": 4,
+    "authoring": {
+        "model": "anthropic/claude-fable-5",
+        "reviewed": False,
+        "verification": {
+            "date": "2026-07-02",
+            "method": "manual rule trace",
+            "cases": 12,
+            "passes": 12,
+        },
+    },
+    "task": {
+        "system": (
+            "You adjudicate access requests. Apply the FIRST matching rule, in this "
+            "exact priority order:\n"
+            "1. ESCALATE: granting would give the requester both roles of a "
+            "separation-of-duties pair - the pairs are payment-initiator/"
+            "payment-approver, deploy-initiator/deploy-approver, code-author/"
+            "sole-code-approver on the same repository, and db-admin/audit-log-admin "
+            "- or the request exceeds the approving manager's own grant authority. "
+            "A role that includes or inherits another role counts as holding it.\n"
+            "2. DENY: the requester's employment or contract ends within 30 days of "
+            "the request date, the named sponsor is no longer active at the company, "
+            "or the requested role has been retired.\n"
+            "3. GRANT_TEMPORARY: an otherwise-valid request tied to a specific "
+            "incident or project with an explicit end date no more than 90 days out.\n"
+            "4. GRANT: an otherwise-valid standing request with recorded manager "
+            "approval and completed prerequisite training.\n"
+            "5. NEEDS_INFO: anything else - e.g. missing approval, missing training, "
+            "or temporary work without an explicit end date.\n"
+            "Reply with exactly one label: ESCALATE, DENY, GRANT_TEMPORARY, GRANT, "
+            "or NEEDS_INFO."
+        ),
+        "promptTemplate": "Access request:\n{input}",
+        "check": "exact",
+    },
+    "cases": [
+        {"input": "The requester currently holds payment-approver. They request payment-initiator for a billing project ending in 30 days; manager approval and training are complete.", "expect": "ESCALATE"},
+        {"input": "A contractor requests standing read access to the analytics warehouse on May 20; manager approval and training are complete; the contract ends June 10 of the same year.", "expect": "DENY"},
+        {"input": "An engineer with no conflicting roles requests db-admin for incident INC-4412 with an end date 14 days out; manager approval and training are complete; employment is stable.", "expect": "GRANT_TEMPORARY"},
+        {"input": "An engineer requests standing deploy-viewer access; manager approval is recorded and the prerequisite deployment-safety training was completed last month; no conflicts, stable employment, active sponsor.", "expect": "GRANT"},
+        {"input": "An engineer requests standing access to billing dashboards; manager approval is recorded, but the prerequisite PCI training is not on file.", "expect": "NEEDS_INFO"},
+        {"input": "An analyst requests temporary data-export access 'until the migration wraps up', with no end date; manager approval and training are complete.", "expect": "NEEDS_INFO"},
+        {"input": "A requester asks for the retired role legacy-ftp-admin to read archived files; manager approval and training are complete; employment is stable.", "expect": "DENY"},
+        {"input": "A manager whose grant authority covers only standard engineering roles approves their report's request for production-root, which is above standard engineering roles; training is complete and employment is stable.", "expect": "ESCALATE"},
+        {"input": "The requester holds code-author on the payments repository and requests sole-code-approver on that same repository for a two-week sprint with an explicit end date; manager approval is recorded.", "expect": "ESCALATE"},
+        {"input": "A standing request names a sponsoring director who left the company last quarter; manager approval and training are complete.", "expect": "DENY"},
+        {"input": "The requester asks for deploy-admin, a role that includes deploy-approver. They already hold deploy-initiator. Manager approval and training are complete, and the request has a 60-day project end date.", "expect": "ESCALATE"},
+        {"input": "An engineer requests read-only log access for incident INC-9001 with an end date 7 days out; manager approval and training are complete; the contract runs 6 more months.", "expect": "GRANT_TEMPORARY"},
+    ],
+}
+
+_ONCALL_DEDUCTION = {
+    "id": "oncall_deduction",
+    "name": "On-call roster deduction",
+    "level": 5,
+    "authoring": {
+        "model": "anthropic/claude-fable-5",
+        "reviewed": False,
+        "verification": {
+            "date": "2026-07-02",
+            "method": "constraint elimination trace",
+            "cases": 12,
+            "passes": 12,
+        },
+    },
+    "task": {
+        "system": (
+            "Each case describes an on-call slot and a set of binding rules. Exactly "
+            "one engineer can take the slot once every rule is applied. Apply the "
+            "rules literally - do not repair, soften, or reinterpret them. Reply "
+            "with ONLY that engineer's first name, nothing else."
+        ),
+        "promptTemplate": "Roster case:\n{input}",
+        "check": "exact",
+    },
+    "cases": [
+        {"input": "Five engineers - Ada, Bo, Chen, Dana, Eli - are candidates for Saturday on-call. Whoever was on call Friday cannot take Saturday; Ada was on call Friday. Bo is on leave Saturday. Chen may take a slot only with Dana as live backup, and Dana is at an offsite with no laptop. The slot requires database-restore certification, held only by Ada, Chen, and Eli. Who takes Saturday?", "expect": "Eli"},
+        {"input": "Maya, Noor, Omar, and Priya are candidates. The slot requires Kubernetes certification, held by Maya, Omar, and Priya. Omar was primary for the last two rotations and policy forbids a third consecutive rotation. Priya is out sick. Who takes the slot?", "expect": "Maya"},
+        {"input": "Kai, Lena, Marco, Nia, and Otto are candidates for Sunday. The Sunday slot goes to whoever was secondary on Saturday, unless that person is on leave Sunday; Lena was Saturday's secondary and is on leave Sunday. If that person is unavailable, the slot goes to the most senior remaining engineer not under a change freeze. Seniority: Otto > Marco > Kai > Nia. Otto's team is under a change freeze, which bars on-call. Who takes Sunday?", "expect": "Marco"},
+        {"input": "Ana, Ben, Cleo, and Dev are candidates. Ben may take the slot only if Ana is his backup, and Ana may back up only engineers with production access - Ben's production access is revoked pending an audit. Cleo took the previous slot and back-to-back slots are forbidden. Dev must be paired with a mentor for any primary slot and no mentor is available. Who takes the slot?", "expect": "Ana"},
+        {"input": "Rita, Sam, Tao, Uma, and Vik are candidates for a slot running 02:00-08:00 UTC. Policy: an engineer may take a slot only if it falls entirely within 08:00-22:00 in their local time zone. Rita is in UTC-5, Sam in UTC+9, Tao in UTC+1, Uma in UTC+5:30, and Vik in UTC-8. Who takes the slot?", "expect": "Sam"},
+        {"input": "Wes, Xia, Yuri, and Zoe are candidates. The slot cannot go to anyone who has not completed the incident-commander course; only Xia and Zoe have completed it. Zoe is excused from on-call this month unless fewer than three engineers are course-eligible. Xia is at a conference with no network access. Who takes the slot?", "expect": "Zoe"},
+        {"input": "Amir, Bela, Caro, Dima, and Ela are candidates. Preference order for the slot: Caro, Dima, Amir, Ela, Bela - the highest-preference eligible engineer takes it. An engineer is skipped for 7 days after authoring a production incident review; Caro's review was published 3 days ago. Dima's approved PTO ends at 06:00 and the slot starts at 06:00; policy treats a slot starting exactly when PTO ends as non-overlapping. Who takes the slot?", "expect": "Dima"},
+        {"input": "Fay, Gus, Hana, and Ivo are candidates. The primary must have deployed the payments service at least once this quarter. This quarter payments was deployed twice: once by Hana, and once by the release bot on behalf of Gus's merge - policy credits bot deploys to the merge author. Gus is already primary on the search rotation that same night, and double-primary is forbidden. Who takes the slot?", "expect": "Hana"},
+        {"input": "Jo, Kim, Lars, Mira, and Nils are candidates. The slot goes to the eligible engineer with the fewest on-call hours this month: Jo 22, Kim 8, Lars 9, Mira 15, Nils 30. Kim lost their pager and has no pager access this week, which makes them ineligible. Nils is on probation and ineligible. Who takes the slot?", "expect": "Lars"},
+        {"input": "Ola, Pia, Quinn, and Rui are candidates. The current runbook's author must not take the slot (fresh-eyes rule); git history shows Quinn wrote 90% of its lines while Rui made the final sign-off commit, and policy attributes authorship to whoever wrote the majority of lines. Pia is on parental leave. Ola may take slots only in weeks he is not release manager, and he is release manager this week. Who takes the slot?", "expect": "Rui"},
+        {"input": "Sana, Timo, Ugo, Vera, and Wim are candidates. Rule: if Vera is available she takes the slot, unless Timo has just returned from leave, in which case Timo takes it unless he lacks a current security clearance. Vera is available. Timo returned from leave yesterday. Timo's security clearance expired last month and renewal is still pending. Who takes the slot?", "expect": "Vera"},
+        {"input": "Xeno, Yara, Zane, and Abe are candidates. The slot requires both the on-call certification and production access. Certification: Xeno, Yara, Abe. Production access: Yara, Zane, Abe. An engineer who was primary in any of the last three rotations is disqualified; Abe was primary exactly once in that window, three rotations ago. Who takes the slot?", "expect": "Yara"},
+    ],
+}
+
+_LEDGER_RECONCILIATION = {
+    "id": "ledger_reconciliation",
+    "name": "Ledger reconciliation",
+    "level": 5,
+    "authoring": {
+        "model": "anthropic/claude-fable-5",
+        "reviewed": False,
+        "verification": {
+            "date": "2026-07-02",
+            "method": "decimal-arithmetic script",
+            "cases": 12,
+            "passes": 12,
+        },
+    },
+    "task": {
+        "system": (
+            "You reconcile a payment-processor ledger, starting from a zero balance. "
+            "Process events in the order given. Rules:\n"
+            "- A CHARGE adds its amount minus a processing fee of 2.9% of the amount "
+            "plus $0.30, computed per charge and rounded to the nearest cent (round "
+            "half up) at charge time.\n"
+            "- A REFUND (full or partial) subtracts exactly the refunded amount; "
+            "processing fees are never returned.\n"
+            "- A CHARGEBACK subtracts the disputed charge amount and an additional "
+            "$15.00 dispute fee.\n"
+            "- If a chargeback is later WON, the charge amount is added back but the "
+            "dispute fee is not.\n"
+            "- An AUTH that is never captured has no ledger effect.\n"
+            "Reply with ONLY the final balance as a plain number, e.g. -12.34 - no "
+            "currency symbol, commas, or words."
+        ),
+        "promptTemplate": "Ledger events, in order:\n{input}",
+        "check": {"type": "numeric", "tolerance": 0.01},
+    },
+    "cases": [
+        {"input": "CHARGE $100.00; CHARGE $50.00; full REFUND of the $50.00 charge.", "expect": 95.05},
+        {"input": "CHARGE $25.37; AUTH $500.00 that is never captured; CHARGE $12.63.", "expect": 36.29},
+        {"input": "CHARGE $200.00; CHARGEBACK on that charge; the chargeback is later WON.", "expect": 178.90},
+        {"input": "CHARGE $75.50; partial REFUND of $25.00; partial REFUND of $10.50.", "expect": 37.51},
+        {"input": "Three separate CHARGEs of $9.99 each; then a full REFUND of one $9.99 charge.", "expect": 18.21},
+        {"input": "CHARGE $150.25; CHARGEBACK on that charge; the dispute is never contested.", "expect": -19.66},
+        {"input": "CHARGE $60.00; full REFUND of it; CHARGE $60.00 again.", "expect": 55.92},
+        {"input": "CHARGE $1,000.00; partial REFUND of $999.99.", "expect": -29.29},
+        {"input": "CHARGE $45.45; CHARGE $54.55; CHARGEBACK on the $54.55 charge; that chargeback is WON; partial REFUND of $5.45 on the $45.45 charge.", "expect": 76.05},
+        {"input": "CHARGE $33.33; CHARGE $66.67; full REFUND of the $33.33 charge; CHARGEBACK on the $66.67 charge, never contested.", "expect": -18.50},
+        {"input": "Five CHARGEs of $20.00 each; then two full REFUNDs of $20.00 charges.", "expect": 55.60},
+        {"input": "CHARGE $500.00; CHARGEBACK on it; the chargeback is WON; then a partial REFUND of $200.00.", "expect": 270.20},
+    ],
+}
+
+
 def _qualitymax_crawl_preset(base_dir: Path) -> dict | None:
     """Load a pulled QualityMax crawl dump when running from the repository."""
     config_path = base_dir / "examples" / "qualitymax" / "crawl.label.yaml"
@@ -720,6 +924,10 @@ def presets(base_dir: Path | None = None) -> list[dict]:
         _EVIDENCE_ADJUDICATION,
         _RELEASE_GOVERNANCE,
         _ROOT_CAUSE,
+        _SLA_CREDITS,
+        _ACCESS_ADJUDICATION,
+        _ONCALL_DEDUCTION,
+        _LEDGER_RECONCILIATION,
     ]
     if base_dir is not None:
         qualitymax = _qualitymax_crawl_preset(base_dir)
